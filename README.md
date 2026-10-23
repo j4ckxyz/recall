@@ -13,7 +13,13 @@ A self-hosted memory of *you*, shared by every AI agent you use, over MCP.
   write, soft deletes with an audit trail, stdio-only unless you opt into HTTP
   with scoped tokens.
 
-Design and rationale: [docs/PROTOCOL.md](docs/PROTOCOL.md).
+```bash
+curl -fsSL https://github.com/j4ckxyz/recall/releases/latest/download/install.sh | sh
+```
+
+[Install](#install) · [Let an agent install it](#or-let-an-agent-do-it) ·
+[Use it across devices](#use-it-across-devices-with-tailscale) · [Design](docs/PROTOCOL.md) ·
+[Benchmarks](bench/README.md)
 
 ## Why not just use ChatGPT or Claude memory?
 
@@ -62,57 +68,157 @@ ChatGPT or Claude.
 
 ## Install
 
+**macOS / Linux / Raspberry Pi**
+
 ```bash
-cargo install --git https://github.com/j4ckxyz/recall                              # macOS
-cargo install --git https://github.com/j4ckxyz/recall --features vendored-openssl  # Linux / Raspberry Pi
-recall init
+curl -fsSL https://github.com/j4ckxyz/recall/releases/latest/download/install.sh | sh
 ```
 
-`init` creates `~/.recall/` (0700) with an encrypted `recall.db` and a 256-bit
-`key` (0600). **Back up the key** — without it the store is unreadable. To keep
-the key in a password manager instead, set `RECALL_KEY_CMD`, e.g.
+**Windows** (PowerShell)
+
+```powershell
+irm https://github.com/j4ckxyz/recall/releases/latest/download/install.ps1 | iex
+```
+
+The installer:
+
+1. Downloads the prebuilt binary for your platform and checks it against the
+   release's `SHA256SUMS`. It stops if the checksum doesn't match.
+2. Installs it to `~/.local/bin` (`%LOCALAPPDATA%\Programs\recall` on Windows).
+3. Creates your encrypted store and key in `~/.recall/`.
+4. Runs `recall doctor`, a self-test of the model, search, the encrypted store
+   and a real MCP handshake.
+5. Offers to add Recall to the agents it finds: Claude Code, Claude Desktop,
+   Cursor, VS Code, Windsurf, Gemini CLI and Codex CLI.
+
+Every release is installed and smoke-tested by CI before it's published, on
+macOS, Windows and Ubuntu (x64 and arm64), and in Debian 11 and 12, Fedora,
+Arch and Alpine containers. CI then re-runs the exact one-liners above against
+the published release. Linux binaries are static (musl), so they run on any
+distro, including 64-bit Raspberry Pi OS.
+
+Prefer to read the script before running it? See
+[`install.sh`](install.sh) and [`install.ps1`](install.ps1). You can also build
+from source:
+`cargo install --git https://github.com/j4ckxyz/recall --features vendored-openssl`
+(drop the feature on macOS).
+
+**Back up `~/.recall/key`.** Without it your memory cannot be decrypted. To
+keep the key in a password manager instead, set `RECALL_KEY_CMD`, for example
 `RECALL_KEY_CMD='op read op://Private/recall/key'`.
+
+### Or let an agent do it
+
+Copy this into Claude Code, Codex, Cursor or any agent that can run commands:
+
+```text
+Install Recall for me (https://github.com/j4ckxyz/recall). It's a self-hosted
+MCP server that gives all my AI agents a shared, encrypted memory about me.
+
+1. Install it:
+   - macOS/Linux: curl -fsSL https://github.com/j4ckxyz/recall/releases/latest/download/install.sh | RECALL_CONNECT=yes sh
+   - Windows PowerShell: $env:RECALL_CONNECT='yes'; irm https://github.com/j4ckxyz/recall/releases/latest/download/install.ps1 | iex
+2. Run `recall doctor` and confirm it ends with "All checks passed". If anything
+   fails, show me the failing line and stop.
+3. If ~/.local/bin isn't on my PATH, add it to my shell profile.
+4. Tell me which agents were connected and that I must restart them.
+5. Remind me to back up ~/.recall/key. Never print, copy or upload the key.
+6. Ask me whether I want to share one memory across my devices with Tailscale.
+   If yes, follow "Use it across devices with Tailscale" in the README, and ask
+   me which device should be the server before changing anything.
+```
 
 ## Connect your agents
 
-Every client runs the same command: `recall mcp`.
+`recall connect` adds Recall to every agent it detects, and keeps a
+`.before-recall` backup of any config file it edits. You can also name agents:
+`recall connect cursor vscode`. `recall disconnect` undoes it.
 
-**Claude Code**
-
-```bash
-claude mcp add --scope user recall -- recall mcp
-```
-
-**Claude Desktop** (`claude_desktop_config.json`), **Cursor** (`~/.cursor/mcp.json`),
-**Gemini CLI** (`~/.gemini/settings.json`), **Windsurf**, **Zed** and most others:
+To configure an agent by hand, every client runs the same command:
+`recall mcp`.
 
 ```json
-{ "mcpServers": { "recall": { "command": "recall", "args": ["mcp"] } } }
+{ "mcpServers": { "recall": { "command": "/full/path/to/recall", "args": ["mcp"] } } }
 ```
 
-**Codex CLI** (`~/.codex/config.toml`)
+- Claude Code: `claude mcp add --scope user recall -- recall mcp`
+- Codex CLI, in `~/.codex/config.toml`: `[mcp_servers.recall]`, then
+  `command = "recall"` and `args = ["mcp"]`
 
-```toml
-[mcp_servers.recall]
-command = "recall"
-args = ["mcp"]
+## Use it across devices with Tailscale
+
+**Recommended:** run one Recall server on an always-on machine (a Raspberry Pi,
+home server or desktop), and point every other device at it over your
+[Tailscale](https://tailscale.com) tailnet. All your agents, on every device,
+then share a single memory, and none of it is reachable from the public
+internet.
+
+```
+ laptop agents ─┐                                  ┌─ Raspberry Pi
+ desktop agents ─┼── recall mcp ── tailnet (WireGuard) ──► recall serve --tailscale
+ work agents   ─┘   (relays stdio)                 └─ encrypted store
 ```
 
-Use the absolute path from `which recall` if the client can't find it.
-
-**Over HTTP** (other devices via Tailscale, or clients that can't spawn processes):
+**1. On the server** (after installing Recall and Tailscale):
 
 ```bash
-recall token add laptop            # or --read-only
-recall serve --listen 127.0.0.1:7878
+recall token add laptop          # one token per device; --read-only for read-only devices
+recall serve --tailscale         # listens on this machine's tailnet IP only, port 7878
 ```
 
-```json
-{ "url": "http://127.0.0.1:7878/mcp", "headers": { "Authorization": "Bearer rcl_…" } }
+To keep it running at boot on Linux:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/recall.service <<'UNIT'
+[Unit]
+Description=Recall memory server
+After=network-online.target tailscaled.service
+
+[Service]
+ExecStart=%h/.local/bin/recall serve --tailscale
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+systemctl --user enable --now recall
+sudo loginctl enable-linger "$USER"   # start at boot without logging in
 ```
 
-Put TLS in front (Tailscale Serve, Caddy, Cloudflare Tunnel + Access) before
-exposing it beyond localhost.
+**2. On every other device:**
+
+```bash
+recall remote http://<server-name>:7878/mcp rcl_…   # MagicDNS name, e.g. http://pi:7878/mcp
+recall connect
+```
+
+The agents on that device still run `recall mcp`; it now relays to the server.
+`recall doctor` checks the connection, and `recall remote off` switches back to
+a local store.
+
+**Why this is safe**
+
+- Traffic between tailnet devices is end-to-end encrypted by WireGuard and
+  limited to your own devices, so Recall can speak plain HTTP without a TLS
+  stack.
+- On top of that, Recall requires a per-device bearer token. Tokens are stored
+  only as hashes and can be revoked with `recall token revoke laptop`.
+- `--tailscale` binds only the tailnet interface, never your LAN or the
+  internet. **Don't** use Tailscale Funnel for Recall.
+- `recall audit` shows which device wrote each memory.
+- To narrow access further, tag the server and allow only your own user in your
+  tailnet policy:
+
+  ```json
+  "grants": [{ "src": ["you@example.com"], "dst": ["tag:recall"], "ip": ["tcp:7878"] }]
+  ```
+
+Clients that only accept a URL can use the server directly, with
+`{ "url": "http://<server>:7878/mcp", "headers": { "Authorization": "Bearer rcl_…" } }`.
+Web and mobile apps such as claude.ai and ChatGPT can't reach a private tailnet
+yet.
 
 ## What agents see
 
@@ -131,6 +237,8 @@ Saved [b22xq]. Related memories; if [b22xq] makes one outdated, `forget` it:
 ## Manage your memory
 
 ```bash
+recall doctor                    # self-test
+recall connect / disconnect      # add Recall to, or remove it from, your agents
 recall list                      # everything
 recall search coffee             # same search agents use
 recall add "Prefers aisle seats" --date 2024-05

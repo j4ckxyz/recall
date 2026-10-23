@@ -1,0 +1,197 @@
+name: release
+# Builds every platform, proves the installers work on real systems, and
+# publishes a GitHub release when a v* tag is pushed. Runs on main too, so
+# installer breakage is caught before anyone tags.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, features: vendored-openssl }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, features: vendored-openssl }
+          - { os: macos-latest, target: aarch64-apple-darwin, features: "" }
+          - { os: macos-latest, target: x86_64-apple-darwin, features: "" }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, features: vendored-openssl }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Install musl toolchain
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build
+        shell: bash
+        env:
+          # Static musl binaries run on any Linux distro, old or new.
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
+        run: cargo build --release -p recall --target ${{ matrix.target }} ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+      - name: Package
+        shell: bash
+        run: |
+          mkdir dist
+          cd target/${{ matrix.target }}/release
+          if [ "${{ runner.os }}" = Windows ]; then
+            7z a -tzip ../../../dist/recall-${{ matrix.target }}.zip recall.exe
+          else
+            tar -czf ../../../dist/recall-${{ matrix.target }}.tar.gz recall
+          fi
+          cd ../../../dist
+          for f in *; do
+            if command -v sha256sum >/dev/null; then sha256sum "$f"; else shasum -a 256 "$f"; fi > "$f.sha256"
+          done
+          ls -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recall-${{ matrix.target }}
+          path: dist/*
+
+  assemble:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - run: |
+          mkdir dist
+          cp artifacts/recall-* dist/
+          rm dist/*.sha256
+          cat artifacts/*.sha256 | sed 's/ \*/  /' > dist/SHA256SUMS
+          cp install.sh install.ps1 dist/
+          cat dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  # Run the real installers against the freshly built binaries.
+  install-test:
+    needs: assemble
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Install with install.sh and use it
+        env:
+          RECALL_ARTIFACT_DIR: ${{ github.workspace }}/dist
+          RECALL_CONNECT: "no"
+        run: sh dist/install.sh && sh .github/smoke.sh
+
+  # The static Linux binaries must work on old, new and non-glibc distros.
+  install-test-distros:
+    needs: assemble
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, image: "debian:11" }
+          - { os: ubuntu-24.04, image: "fedora:41" }
+          - { os: ubuntu-24.04, image: "alpine:3.20" }
+          - { os: ubuntu-24.04, image: "archlinux:latest" }
+          - { os: ubuntu-24.04-arm, image: "debian:12" }
+          - { os: ubuntu-24.04-arm, image: "alpine:3.20" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Install with install.sh in ${{ matrix.image }}
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src -e RECALL_ARTIFACT_DIR=/src/dist -e RECALL_CONNECT=no \
+            ${{ matrix.image }} sh -c '
+              if command -v dnf >/dev/null; then dnf install -y -q tar gzip; fi
+              sh dist/install.sh && sh .github/smoke.sh'
+
+  install-test-windows:
+    needs: assemble
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Install with install.ps1 (Windows PowerShell 5.1)
+        shell: powershell
+        env:
+          RECALL_CONNECT: "no"
+        run: |
+          $env:RECALL_ARTIFACT_DIR = "$env:GITHUB_WORKSPACE\dist"
+          & .\dist\install.ps1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Use it like an agent would
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $recall = "$env:LOCALAPPDATA\Programs\recall\recall.exe"
+          & $recall add "User is vegetarian." --date 2021-03
+          $out = & $recall search "vegitarian food"
+          if (-not ($out -match 'User is vegetarian')) { throw "search failed: $out" }
+          New-Item -ItemType Directory -Force "$env:USERPROFILE\.cursor" | Out-Null
+          & $recall connect cursor
+          if (-not (Select-String -Quiet '"recall"' "$env:USERPROFILE\.cursor\mcp.json")) { throw 'connect failed' }
+          & $recall doctor
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [install-test, install-test-distros, install-test-windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --title "Recall ${{ github.ref_name }}" --generate-notes
+
+  # After publishing, run the exact one-liners from the README.
+  verify-release:
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: curl | sh
+        if: runner.os != 'Windows'
+        env:
+          RECALL_CONNECT: "no"
+        run: curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh | sh
+      - name: irm | iex
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          RECALL_CONNECT: "no"
+        run: irm https://github.com/${{ github.repository }}/releases/latest/download/install.ps1 | iex

@@ -5,6 +5,8 @@ pub mod embed;
 pub mod guard;
 pub mod http;
 pub mod mcp;
+pub mod remote;
+pub mod setup;
 pub mod store;
 pub mod text;
 pub mod when;

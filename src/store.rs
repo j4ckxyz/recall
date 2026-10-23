@@ -2,15 +2,13 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs::OpenOptions;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use sha2::{Digest, Sha256};
 
-use crate::config::{Key, hex};
+use crate::config::{Key, create_private, hex, random};
 use crate::embed::{self, Embedder};
 use crate::text::{fts_query, word_set, words};
 use crate::{Result, guard, when};
@@ -121,8 +119,8 @@ impl Store {
     /// Open (creating if needed) the encrypted store at `path`.
     pub fn open(path: &Path, key: &Key, embedder: Option<&'static Embedder>) -> Result<Self> {
         if !path.exists() {
-            // Pre-create with 0600; SQLite copies these permissions to -wal/-shm.
-            OpenOptions::new().write(true).create_new(true).mode(0o600).open(path)?;
+            // Pre-create owner-only; SQLite copies these permissions to -wal/-shm.
+            create_private(path)?;
         }
         let conn = Connection::open_with_flags(
             path,
@@ -491,9 +489,8 @@ impl Store {
     fn fresh_sid(&self) -> Result<String> {
         const ALPHABET: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
         loop {
-            let mut raw = [0u8; 5];
-            getrandom::fill(&mut raw).map_err(|e| format!("rng: {e}"))?;
-            let sid: String = raw.iter().map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char).collect();
+            let sid: String = random::<5>()?
+                .iter().map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char).collect();
             let taken: bool = self.conn.query_row("SELECT EXISTS(SELECT 1 FROM memories WHERE sid = ?1)", [&sid], |r| r.get(0))?;
             if !taken {
                 return Ok(sid);
@@ -505,9 +502,7 @@ impl Store {
 
     /// Create a token; returns the plaintext once. Only its SHA-256 is stored.
     pub fn token_add(&self, name: &str, scope: Scope) -> Result<String> {
-        let mut raw = [0u8; 32];
-        getrandom::fill(&mut raw).map_err(|e| format!("rng: {e}"))?;
-        let token = format!("rcl_{}", hex(&raw));
+        let token = format!("rcl_{}", hex(&random::<32>()?));
         let scope = if scope == Scope::Write { "write" } else { "read" };
         self.conn
             .execute(

@@ -8,6 +8,8 @@ use recall::config::{self, Key};
 use recall::mcp::Server;
 use recall::embed;
 use recall::store::{self, Mode, Saved, Scope, Store};
+use recall::remote::{self, Remote};
+use recall::setup;
 use recall::{Result, http};
 
 const USAGE: &str = "\
@@ -15,9 +17,15 @@ recall — personal memory for every AI agent, over MCP
 
 USAGE:
   recall init                         create the encrypted store and key
+  recall connect [AGENT...]           add Recall to installed agents (default: all detected)
+  recall disconnect [AGENT...]        remove it again
+  recall doctor                       self-test everything
   recall mcp                          run the stdio MCP server (what agents spawn)
-  recall serve [--listen ADDR] [--allow-origin ORIGIN]...
-                                      run the HTTP MCP server (default 127.0.0.1:7878)
+  recall serve [--tailscale | --listen ADDR] [--port N] [--allow-origin ORIGIN]...
+                                      run the HTTP MCP server (default 127.0.0.1:7878;
+                                      --tailscale listens on this device's tailnet IP)
+  recall remote URL TOKEN             use a Recall server elsewhere (e.g. http://pi:7878/mcp)
+  recall remote | remote off          show / stop using the remote server
   recall token add NAME [--read-only] create an HTTP bearer token (shown once)
   recall token list | revoke NAME
   recall list                         show every memory
@@ -55,7 +63,27 @@ fn run(args: &[String]) -> Result<()> {
         [] | ["help" | "-h" | "--help"] => println!("{USAGE}"),
         ["version" | "-V" | "--version"] => println!("recall {}", env!("CARGO_PKG_VERSION")),
         ["init"] => init()?,
-        ["mcp"] => stdio(Server::new(open()?, Scope::Write))?,
+        ["doctor"] => setup::doctor()?,
+        ["connect", which @ ..] => connect(which, true)?,
+        ["disconnect", which @ ..] => connect(which, false)?,
+        ["mcp"] => match Remote::load()? {
+            Some(r) => r.relay()?,
+            None => stdio(Server::new(open()?, Scope::Write))?,
+        },
+        ["remote"] => match Remote::load()? {
+            Some(r) => println!("Using remote server {}", r.url()),
+            None => println!("Using the local store (no remote configured)."),
+        },
+        ["remote", "off"] => {
+            let _ = std::fs::remove_file(config::remote_path()?);
+            println!("Remote disabled; agents use the local store.");
+        }
+        ["remote", url, token] => {
+            let r = Remote::new(url, token)?;
+            r.send(&json!({ "jsonrpc": "2.0", "id": 1, "method": "ping" }))?;
+            Remote::save(url, token)?;
+            println!("Connected to {}. Every agent on this device now uses it.", r.url());
+        }
         ["serve", rest @ ..] => serve(rest)?,
         ["token", "add", name, rest @ ..] => {
             let scope = if rest.contains(&"--read-only") { Scope::Read } else { Scope::Write };
@@ -145,7 +173,7 @@ fn init() -> Result<()> {
     }
     let s = open()?;
     println!("Store ready at {} ({} memories).", db.display(), s.count()?);
-    println!("\nAdd to an MCP client, e.g. Claude Code:\n  claude mcp add --scope user recall -- {} mcp", std::env::current_exe()?.display());
+    println!("\nNext: `recall connect` adds Recall to your installed agents; `recall doctor` checks everything.");
     let _ = home;
     Ok(())
 }
@@ -173,21 +201,28 @@ fn stdio(mut server: Server) -> Result<()> {
 
 fn serve(args: &[&str]) -> Result<()> {
     let mut listen: SocketAddr = "127.0.0.1:7878".parse()?;
+    let mut port = None;
     let mut allow_origins = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match *a {
             "--listen" => listen = it.next().ok_or("--listen needs ADDR")?.parse()?,
+            "--tailscale" => listen = format!("{}:7878", remote::tailscale_ip()?).parse()?,
+            "--port" => port = Some(it.next().ok_or("--port needs N")?.parse::<u16>()?),
             "--allow-origin" => allow_origins.push(it.next().ok_or("--allow-origin needs ORIGIN")?.to_string()),
             other => return Err(format!("unknown flag {other}").into()),
         }
+    }
+    if let Some(p) = port {
+        listen.set_port(p);
     }
     let store = open()?;
     if store.token_list()?.is_empty() {
         eprintln!("recall: no tokens yet; create one with `recall token add NAME`");
     }
-    if !listen.ip().is_loopback() {
-        eprintln!("recall: WARNING listening on a non-loopback address; put TLS in front (Tailscale, Caddy, Cloudflare Tunnel)");
+    let tailnet = matches!(listen.ip(), std::net::IpAddr::V4(ip) if ip.octets()[0] == 100 && (64..128).contains(&ip.octets()[1]));
+    if !listen.ip().is_loopback() && !tailnet {
+        eprintln!("recall: WARNING listening on a non-loopback, non-tailnet address; traffic is unencrypted. Prefer --tailscale.");
     }
     http::serve(Server::new(store, Scope::Read), http::Options { listen, allow_origins })
 }
@@ -237,4 +272,42 @@ fn import(s: &Store, file: &str) -> Result<()> {
     }
     println!("Imported {added}, skipped {skipped} (duplicates or rejected).");
     Ok(())
+}
+
+/// `connect` / `disconnect` the named agents, or all detected/connected ones.
+fn connect(which: &[&str], add: bool) -> Result<()> {
+    let all = setup::clients()?;
+    for w in which {
+        if !all.iter().any(|c| c.id == *w) {
+            let ids: Vec<&str> = all.iter().map(|c| c.id).collect();
+            return Err(format!("unknown agent '{w}'; known: {}", ids.join(", ")).into());
+        }
+    }
+    let chosen: Vec<_> = all
+        .iter()
+        .filter(|c| if which.is_empty() { if add { c.detected } else { c.is_connected() } } else { which.contains(&c.id) })
+        .collect();
+    if chosen.is_empty() {
+        println!("No {} agents found. Supported: {}.", if add { "installed" } else { "connected" }, all.iter().map(|c| c.name).collect::<Vec<_>>().join(", "));
+        return Ok(());
+    }
+    let mut failed = false;
+    for c in chosen {
+        let result = if add {
+            if c.is_connected() { Ok("already connected".to_string()) } else { c.connect() }
+        } else {
+            c.disconnect().map(|()| "removed".to_string())
+        };
+        match result {
+            Ok(m) => println!("  ✓ {:<15} {m}", c.name),
+            Err(e) => {
+                failed = true;
+                println!("  ✗ {:<15} {e}", c.name);
+            }
+        }
+    }
+    if add {
+        println!("\nRestart open agents to pick up the change.");
+    }
+    if failed { Err("some agents could not be updated".into()) } else { Ok(()) }
 }

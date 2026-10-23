@@ -148,7 +148,8 @@ shows another process wrote.
 | Mode | Command | Use |
 |---|---|---|
 | **stdio** (default) | `recall mcp` | Every desktop/CLI agent. No network surface. Each client spawns its own process (~13 MB RSS, ~10 ms for a full session). |
-| **Streamable HTTP** | `recall serve [--listen ADDR]` | Clients that can't spawn processes, or other devices via Tailscale/tunnel. `POST /mcp`, JSON responses, stateless. |
+| **Streamable HTTP** | `recall serve [--tailscale \| --listen ADDR]` | Clients that can't spawn processes, or other devices. `POST /mcp`, JSON responses, stateless. |
+| **Relay** | `recall remote URL TOKEN`, then `recall mcp` | Recommended multi-device setup: every device's agents spawn `recall mcp` as usual, and it relays each JSON-RPC message to one server in your tailnet (plain HTTP inside WireGuard). |
 
 HTTP hardening: loopback by default; `Authorization: Bearer` required (256-bit
 tokens, shown once, stored as SHA-256, looked up by hash, `read` or `write`
@@ -206,8 +207,11 @@ Raspberry Pi.
 
 ```
 recall init                     create store + key
-recall mcp                      stdio MCP server (what agents spawn)
-recall serve [--listen ADDR] [--allow-origin ORIGIN]
+recall connect | disconnect     add Recall to / remove it from installed agents
+recall doctor                   end-to-end self-test (model, engine, store, MCP handshake)
+recall mcp                      stdio MCP server (what agents spawn); relays if a remote is set
+recall serve [--tailscale | --listen ADDR] [--port N] [--allow-origin ORIGIN]
+recall remote URL TOKEN | remote | remote off   share one server across devices
 recall token add NAME [--read-only] | list | revoke NAME
 recall list | search Q | add TEXT [--date D] | rm ID | restore ID | trash
 recall export [--json] | import FILE
