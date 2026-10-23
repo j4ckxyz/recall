@@ -1,5 +1,6 @@
 use std::io::{BufRead, Write};
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use serde_json::{Value, json};
@@ -40,7 +41,9 @@ USAGE:
 
 ENVIRONMENT:
   RECALL_HOME      state directory (default ~/.recall)
-  RECALL_KEY_CMD   command that prints the 64-hex-char key (e.g. from a password manager)";
+  RECALL_KEY_CMD   command that prints the 64-hex-char key (e.g. from a password manager)
+  RECALL_REMOTE_URL, RECALL_REMOTE_TOKEN
+                   use a remote server (overrides `recall remote`)";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -68,7 +71,15 @@ fn run(args: &[String]) -> Result<()> {
         ["disconnect", which @ ..] => connect(which, false)?,
         ["mcp"] => match Remote::load()? {
             Some(r) => r.relay()?,
-            None => stdio(Server::new(open()?, Scope::Write))?,
+            None => {
+                // First launch (e.g. installed from the MCP Registry or as a
+                // Claude Desktop extension): create the store, no terminal needed.
+                let (store, new_key) = ensure_store()?;
+                if let Some(k) = new_key {
+                    eprintln!("recall: created an encrypted memory store; back up {}", k.display());
+                }
+                stdio(Server::new(store, Scope::Write))?
+            }
         },
         ["remote"] => match Remote::load()? {
             Some(r) => println!("Using remote server {}", r.url()),
@@ -161,20 +172,28 @@ fn take_flag<'a>(args: &[&'a str], flag: &str) -> (Option<&'a str>, Vec<&'a str>
     (value, rest)
 }
 
-fn init() -> Result<()> {
-    let home = config::ensure_home()?;
+/// Create the key if there is none (and no store it would orphan), then open
+/// the store. Returns the new key's path when one was created.
+fn ensure_store() -> Result<(Store, Option<PathBuf>)> {
+    config::ensure_home()?;
     let db = config::db_path()?;
-    if std::env::var_os("RECALL_KEY_CMD").is_none() && Key::load().is_err() {
+    let mut new_key = None;
+    if std::env::var_os("RECALL_KEY_CMD").is_none() && !config::key_path()?.exists() {
         if db.exists() {
-            return Err(format!("{} exists but no key was found; refusing to create a new key", db.display()).into());
+            return Err(format!("{} exists but its key is missing; restore ~/.recall/key from your backup", db.display()).into());
         }
-        let path = Key::generate()?.save()?;
-        println!("Key written to {} (0600). Back it up: without it the store is unreadable.", path.display());
+        new_key = Some(Key::generate()?.save()?);
     }
-    let s = open()?;
-    println!("Store ready at {} ({} memories).", db.display(), s.count()?);
+    Ok((open()?, new_key))
+}
+
+fn init() -> Result<()> {
+    let (store, new_key) = ensure_store()?;
+    if let Some(k) = new_key {
+        println!("Key written to {} (owner-only). Back it up: without it the store is unreadable.", k.display());
+    }
+    println!("Store ready at {} ({} memories).", config::db_path()?.display(), store.count()?);
     println!("\nNext: `recall connect` adds Recall to your installed agents; `recall doctor` checks everything.");
-    let _ = home;
     Ok(())
 }
 

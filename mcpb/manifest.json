@@ -1,0 +1,59 @@
+{
+  "manifest_version": "0.3",
+  "name": "recall",
+  "display_name": "Recall",
+  "version": "0.0.0",
+  "description": "Private, encrypted memory about you, shared by every AI agent you use.",
+  "long_description": "Recall gives every AI agent the same memory of you: your preferences, background, projects and how you like to work. It runs entirely on your computer in an encrypted store, with fuzzy search powered by a tiny bundled embedding model. Optionally point it at a Recall server in your Tailscale tailnet to share one memory across all your devices.",
+  "author": { "name": "j4ckxyz", "url": "https://github.com/j4ckxyz" },
+  "repository": { "type": "git", "url": "https://github.com/j4ckxyz/recall" },
+  "homepage": "https://github.com/j4ckxyz/recall",
+  "documentation": "https://github.com/j4ckxyz/recall#readme",
+  "support": "https://github.com/j4ckxyz/recall/issues",
+  "icon": "icon.png",
+  "license": "MIT",
+  "keywords": ["memory", "personal", "profile", "preferences", "encrypted", "self-hosted", "tailscale"],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/run.sh",
+    "mcp_config": {
+      "command": "/bin/sh",
+      "args": ["${__dirname}/server/run.sh", "mcp"],
+      "env": {
+        "RECALL_REMOTE_URL": "${user_config.remote_url}",
+        "RECALL_REMOTE_TOKEN": "${user_config.remote_token}"
+      },
+      "platform_overrides": {
+        "win32": {
+          "command": "${__dirname}/server/recall.exe",
+          "args": ["mcp"]
+        }
+      }
+    }
+  },
+  "tools": [
+    { "name": "recall", "description": "Search what is known about the user, or get their whole profile." },
+    { "name": "remember", "description": "Save one durable fact about the user." },
+    { "name": "forget", "description": "Remove a memory that is wrong or outdated." }
+  ],
+  "user_config": {
+    "remote_url": {
+      "type": "string",
+      "title": "Shared server URL (optional)",
+      "description": "To share one memory across devices, the URL of a Recall server in your Tailscale tailnet, e.g. http://pi:7878/mcp. Leave empty to keep memory on this computer.",
+      "required": false,
+      "default": ""
+    },
+    "remote_token": {
+      "type": "string",
+      "title": "Shared server token (optional)",
+      "description": "Token from `recall token add NAME` on the server.",
+      "sensitive": true,
+      "required": false,
+      "default": ""
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"]
+  }
+}

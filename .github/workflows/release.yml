@@ -1,28 +1,84 @@
 name: release
-# Builds every platform, proves the installers work on real systems, and
-# publishes a GitHub release when a v* tag is pushed. Runs on main too, so
-# installer breakage is caught before anyone tags.
+# Every push to main that changes the product is released automatically:
+#   plan     -> pick the next version (Cargo.toml if bumped, else last tag +1 patch)
+#   build    -> static binaries for macOS, Linux (x64/arm64, musl) and Windows
+#   assemble -> tarballs/zips, recall.mcpb bundle, server.json, SHA256SUMS
+#   test     -> run the real installers on macOS, Windows, Ubuntu and 6 distros
+#   publish  -> tag + GitHub release + MCP Registry (GitHub OIDC, no secrets)
+#   verify   -> re-run the README one-liners against the published release
+# Docs-only pushes, PRs and "[skip release]" commits build and test only.
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Release even if nothing changed"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      release: ${{ steps.plan.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          FORCE: ${{ inputs.release }}
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          cargo_v=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          last=$(git tag -l 'v*' --sort=-v:refname | head -1 | sed 's/^v//')
+          if [ -z "$last" ]; then
+            next=$cargo_v
+          elif [ "$cargo_v" != "$last" ] && [ "$(printf '%s\n%s\n' "$last" "$cargo_v" | sort -V | tail -1)" = "$cargo_v" ]; then
+            next=$cargo_v   # Cargo.toml was bumped by hand (minor/major release)
+          else
+            IFS=. read -r major minor patch <<< "$last"
+            next="$major.$minor.$((patch + 1))"
+          fi
+
+          release=false
+          if [ "$EVENT" = push ] && [ "$REF" = refs/heads/main ]; then
+            if [ -z "$last" ]; then
+              release=true
+            elif git diff --name-only "v$last" HEAD | grep -qE '^(src/|models/|mcpb/|Cargo\.(toml|lock)$|install\.(sh|ps1)$|server\.json$)'; then
+              release=true
+            fi
+            case "$MESSAGE" in *"[skip release]"*) release=false ;; esac
+          fi
+          [ "$EVENT" = workflow_dispatch ] && [ "$FORCE" = true ] && release=true
+
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "### Version $next — release: $release (last tag: ${last:-none})" >> "$GITHUB_STEP_SUMMARY"
+
   build:
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, features: vendored-openssl }
-          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, features: vendored-openssl }
-          - { os: macos-latest, target: aarch64-apple-darwin, features: "" }
-          - { os: macos-latest, target: x86_64-apple-darwin, features: "" }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc, features: vendored-openssl }
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, name: linux-x86_64 }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, name: linux-aarch64 }
+          - { os: macos-latest, target: aarch64-apple-darwin, name: darwin-arm64 }
+          - { os: macos-latest, target: x86_64-apple-darwin, name: darwin-x86_64 }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, name: windows-x86_64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -32,58 +88,96 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      - name: Install musl toolchain
-        if: contains(matrix.target, 'musl')
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - name: Build
-        shell: bash
-        env:
-          # Static musl binaries run on any Linux distro, old or new.
-          CC_x86_64_unknown_linux_musl: musl-gcc
-          CC_aarch64_unknown_linux_musl: musl-gcc
-        run: cargo build --release -p recall --target ${{ matrix.target }} ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
-      - name: Package
+      - name: Stamp version ${{ needs.plan.outputs.version }}
         shell: bash
         run: |
-          mkdir dist
-          cd target/${{ matrix.target }}/release
-          if [ "${{ runner.os }}" = Windows ]; then
-            7z a -tzip ../../../dist/recall-${{ matrix.target }}.zip recall.exe
-          else
-            tar -czf ../../../dist/recall-${{ matrix.target }}.tar.gz recall
-          fi
-          cd ../../../dist
-          for f in *; do
-            if command -v sha256sum >/dev/null; then sha256sum "$f"; else shasum -a 256 "$f"; fi > "$f.sha256"
-          done
-          ls -l
+          perl -0pi -e 's/^version = ".*?"/version = "${{ needs.plan.outputs.version }}"/m' Cargo.toml
+          grep -m1 '^version' Cargo.toml
+      - name: Build (Linux, static musl)
+        if: runner.os == 'Linux'
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
+        run: |
+          sudo apt-get update && sudo apt-get install -y musl-tools
+          cargo build --release -p recall --target ${{ matrix.target }} --features vendored-openssl
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: cargo build --release -p recall --target ${{ matrix.target }}
+      - name: Build (Windows)
+        # PowerShell, so OpenSSL's build finds Strawberry Perl, not Git Bash's.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo build --release -p recall --target ${{ matrix.target }} --features vendored-openssl
+      - name: Collect binary
+        shell: bash
+        run: |
+          mkdir bin
+          ext=""; [ "${{ runner.os }}" = Windows ] && ext=".exe"
+          cp "target/${{ matrix.target }}/release/recall$ext" "bin/recall-${{ matrix.name }}$ext"
       - uses: actions/upload-artifact@v4
         with:
-          name: recall-${{ matrix.target }}
-          path: dist/*
+          name: bin-${{ matrix.name }}
+          path: bin/*
 
   assemble:
-    needs: build
+    needs: [plan, build]
     runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          pattern: bin-*
+          path: bin
           merge-multiple: true
-      - run: |
-          mkdir dist
-          cp artifacts/recall-* dist/
-          rm dist/*.sha256
-          cat artifacts/*.sha256 | sed 's/ \*/  /' > dist/SHA256SUMS
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - name: Archives for the installers
+        run: |
+          mkdir -p dist stage
+          for pair in linux-x86_64:x86_64-unknown-linux-musl linux-aarch64:aarch64-unknown-linux-musl \
+                      darwin-arm64:aarch64-apple-darwin darwin-x86_64:x86_64-apple-darwin; do
+            name=${pair%%:*}; target=${pair#*:}
+            rm -rf stage/*; cp "bin/recall-$name" stage/recall; chmod 755 stage/recall
+            tar -czf "dist/recall-$target.tar.gz" -C stage recall
+          done
+          rm -rf stage/*; cp bin/recall-windows-x86_64.exe stage/recall.exe
+          (cd stage && zip -q ../dist/recall-x86_64-pc-windows-msvc.zip recall.exe)
+      - name: MCPB bundle (one file, every platform)
+        run: |
+          mkdir -p bundle/server
+          jq --arg v "$VERSION" '.version = $v' mcpb/manifest.json > bundle/manifest.json
+          cp mcpb/icon.png bundle/
+          cp mcpb/run.sh bundle/server/
+          for n in linux-x86_64 linux-aarch64 darwin-arm64 darwin-x86_64; do cp "bin/recall-$n" bundle/server/; done
+          cp bin/recall-windows-x86_64.exe bundle/server/recall.exe
+          chmod 755 bundle/server/recall-* bundle/server/run.sh
+          npx -y @anthropic-ai/mcpb validate bundle/manifest.json
+          npx -y @anthropic-ai/mcpb pack bundle dist/recall.mcpb
+      - name: server.json for the MCP Registry
+        run: |
+          sha=$(sha256sum dist/recall.mcpb | cut -d' ' -f1)
+          jq --arg v "$VERSION" --arg sha "$sha" \
+             --arg url "https://github.com/${{ github.repository }}/releases/download/v$VERSION/recall.mcpb" \
+             '.version = $v | .packages[0].identifier = $url | .packages[0].fileSha256 = $sha' server.json > dist/server.json
+          cat dist/server.json
+      - name: Validate server.json
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          cp dist/server.json server.json
+          if ./mcp-publisher --help 2>&1 | grep -q validate; then ./mcp-publisher validate; else echo "mcp-publisher has no validate command; skipping"; fi
+      - name: Checksums
+        run: |
           cp install.sh install.ps1 dist/
-          cat dist/SHA256SUMS
+          (cd dist && sha256sum recall-* recall.mcpb > SHA256SUMS && cat SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/*
 
-  # Run the real installers against the freshly built binaries.
   install-test:
     needs: assemble
     strategy:
@@ -102,8 +196,15 @@ jobs:
           RECALL_ARTIFACT_DIR: ${{ github.workspace }}/dist
           RECALL_CONNECT: "no"
         run: sh dist/install.sh && sh .github/smoke.sh
+      - name: Run the MCPB bundle the way Claude Desktop does
+        run: |
+          mkdir mcpb-x && cd mcpb-x && unzip -q ../dist/recall.mcpb
+          export HOME="$RUNNER_TEMP/mcpb-home"; mkdir -p "$HOME"
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci"}}}' \
+                        '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | RECALL_REMOTE_URL= RECALL_REMOTE_TOKEN= /bin/sh server/run.sh mcp | tee out.jsonl
+          grep -q '"remember"' out.jsonl
 
-  # The static Linux binaries must work on old, new and non-glibc distros.
   install-test-distros:
     needs: assemble
     strategy:
@@ -145,7 +246,6 @@ jobs:
         run: |
           $env:RECALL_ARTIFACT_DIR = "$env:GITHUB_WORKSPACE\dist"
           & .\dist\install.ps1
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Use it like an agent would
         shell: powershell
         run: |
@@ -159,39 +259,65 @@ jobs:
           if (-not (Select-String -Quiet '"recall"' "$env:USERPROFILE\.cursor\mcp.json")) { throw 'connect failed' }
           & $recall doctor
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Run the MCPB bundle's Windows binary
+        shell: powershell
+        run: |
+          Expand-Archive -Force dist\recall.mcpb mcpb-x
+          $env:RECALL_HOME = "$env:RUNNER_TEMP\mcpb-home"
+          $out = '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | & .\mcpb-x\server\recall.exe mcp
+          if (-not ($out -match '"remember"')) { throw "bundle failed: $out" }
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [install-test, install-test-distros, install-test-windows]
+    if: needs.plan.outputs.release == 'true'
+    needs: [plan, install-test, install-test-distros, install-test-windows]
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: write   # tag + GitHub release
+      id-token: write   # MCP Registry login via GitHub OIDC
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --title "Recall ${{ github.ref_name }}" --generate-notes
+      - name: GitHub release v${{ needs.plan.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/* --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" --title "Recall v$VERSION" --generate-notes
+      - name: Publish to the MCP Registry
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          cp dist/server.json server.json
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
 
-  # After publishing, run the exact one-liners from the README.
-  verify-release:
-    needs: publish
+  verify:
+    needs: [plan, publish]
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - name: curl | sh
+      - name: curl | sh (README one-liner)
         if: runner.os != 'Windows'
         env:
           RECALL_CONNECT: "no"
-        run: curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh | sh
-      - name: irm | iex
+        run: |
+          curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh | sh
+          ~/.local/bin/recall --version | grep -q "${{ needs.plan.outputs.version }}"
+      - name: irm | iex (README one-liner)
         if: runner.os == 'Windows'
         shell: powershell
         env:
           RECALL_CONNECT: "no"
-        run: irm https://github.com/${{ github.repository }}/releases/latest/download/install.ps1 | iex
+        run: |
+          irm https://github.com/${{ github.repository }}/releases/latest/download/install.ps1 | iex
+          & "$env:LOCALAPPDATA\Programs\recall\recall.exe" --version
+      - name: Listed in the MCP Registry
+        if: runner.os == 'Linux' && runner.arch == 'X64'
+        run: |
+          curl -fsSL "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.j4ckxyz/recall" \
+            | jq -e --arg v "${{ needs.plan.outputs.version }}" '[.servers[] | (.server // .) | select(.name == "io.github.j4ckxyz/recall" and .version == $v)] | length > 0'

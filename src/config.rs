@@ -27,7 +27,7 @@ pub fn db_path() -> Result<PathBuf> {
     Ok(home()?.join("recall.db"))
 }
 
-fn key_path() -> Result<PathBuf> {
+pub fn key_path() -> Result<PathBuf> {
     Ok(home()?.join("key"))
 }
 

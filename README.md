@@ -80,6 +80,16 @@ curl -fsSL https://github.com/j4ckxyz/recall/releases/latest/download/install.sh
 irm https://github.com/j4ckxyz/recall/releases/latest/download/install.ps1 | iex
 ```
 
+**Claude Desktop, one click:** download
+[`recall.mcpb`](https://github.com/j4ckxyz/recall/releases/latest/download/recall.mcpb)
+and open it. The bundle covers macOS, Windows and Linux. It creates your
+encrypted store on first launch, and you can optionally enter a shared Tailscale
+server.
+
+**MCP Registry:** Recall is listed as
+[`io.github.j4ckxyz/recall`](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.j4ckxyz/recall),
+so clients that browse the official registry can install it directly.
+
 The installer:
 
 1. Downloads the prebuilt binary for your platform and checks it against the
@@ -254,6 +264,26 @@ recall import chatgpt-memories.txt   # one fact per line, or a JSON export
 cargo test --workspace
 cargo run --release -p recall-bench -- run bench/models/potion-base-8M
 ```
+
+### Releases are automatic
+
+Every push to `main` that touches the product (`src/`, `models/`, `mcpb/`,
+`Cargo.*`, the installers or `server.json`) is released by
+[`release.yml`](.github/workflows/release.yml):
+
+1. Picks the next version: the last tag plus one patch. Bump `version` in
+   `Cargo.toml` yourself for a minor or major release.
+2. Builds static binaries for macOS (arm64/x64), Linux (x64/arm64, musl) and
+   Windows, then assembles `recall.mcpb` and `server.json`.
+3. Installs and smoke-tests them on macOS, Windows, Ubuntu (x64 and arm64),
+   Debian 11 and 12, Fedora, Arch and Alpine.
+4. Tags the commit and publishes a GitHub release.
+5. Publishes to the MCP Registry using GitHub OIDC, so no secrets are needed.
+6. Re-runs the README one-liners against the live release and checks the
+   registry listing.
+
+Pushes that only change docs build and test without releasing. Add
+`[skip release]` to a commit message to skip a release on purpose.
 
 The bundled model is [minishlab/potion-base-8M](https://huggingface.co/minishlab/potion-base-8M)
 (MIT), quantised to int8 in `models/recall.rv`.

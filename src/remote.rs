@@ -40,8 +40,14 @@ impl Remote {
         Ok(Remote { host, port, path, token: token.to_string() })
     }
 
-    /// Load `remote.json` if remote mode is configured.
+    /// The remote server, if configured: `RECALL_REMOTE_URL` and
+    /// `RECALL_REMOTE_TOKEN` (empty means unset), else `remote.json`.
     pub fn load() -> Result<Option<Self>> {
+        let env = |k| std::env::var(k).ok().filter(|v: &String| !v.trim().is_empty());
+        if let Some(url) = env("RECALL_REMOTE_URL") {
+            let token = env("RECALL_REMOTE_TOKEN").ok_or("RECALL_REMOTE_URL is set but RECALL_REMOTE_TOKEN is empty")?;
+            return Ok(Some(Remote::new(url.trim(), token.trim())?));
+        }
         let path = config::remote_path()?;
         if !path.exists() {
             return Ok(None);
