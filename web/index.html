@@ -20,8 +20,8 @@
       <p class="mt-1 text-center text-sm text-slate-500 dark:text-slate-400">Your memory, shared by every agent.</p>
       <label for="password" class="mt-8 block text-sm font-medium text-slate-700 dark:text-slate-300">Password</label>
       <input id="password" type="password" autocomplete="current-password" required autofocus
-        class="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-indigo-500/30 placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-indigo-400">
-      <p id="login-error" class="mt-2 min-h-5 text-sm text-rose-600 dark:text-rose-400"></p>
+        class="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-indigo-500/30 placeholder:text-slate-500 focus:border-indigo-500 focus:ring-4 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-indigo-400">
+      <p id="login-error" class="mt-2 min-h-5 text-sm text-rose-700 dark:text-rose-400"></p>
       <button class="mt-2 w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:opacity-60">Sign in</button>
       <p id="login-hint" class="mt-6 hidden rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-800/60 dark:text-slate-400">
         No password yet. On the machine running Recall, run
@@ -42,16 +42,16 @@
       </div>
       <div class="px-3 pt-4">
         <div class="relative">
-          <svg class="pointer-events-none absolute left-2.5 top-2.5 size-4 text-slate-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 3.47 9.77l3.63 3.63a.75.75 0 1 0 1.06-1.06l-3.63-3.63A5.5 5.5 0 0 0 9 3.5ZM5 9a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z" clip-rule="evenodd"/></svg>
+          <svg class="pointer-events-none absolute left-2.5 top-2.5 size-4 text-slate-500 dark:text-slate-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 3.47 9.77l3.63 3.63a.75.75 0 1 0 1.06-1.06l-3.63-3.63A5.5 5.5 0 0 0 9 3.5ZM5 9a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z" clip-rule="evenodd"/></svg>
           <input id="search" type="search" placeholder="Search memories" autocomplete="off" spellcheck="false"
-            class="block w-full rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-10 text-sm outline-none ring-indigo-500/30 placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-indigo-400">
-          <kbd class="pointer-events-none absolute right-2 top-2 rounded border border-slate-200 px-1.5 font-sans text-[11px] text-slate-400 dark:border-slate-700">/</kbd>
+            class="block w-full rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-10 text-sm outline-none ring-indigo-500/30 placeholder:text-slate-500 focus:border-indigo-500 focus:ring-4 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-indigo-400">
+          <kbd class="pointer-events-none absolute right-2 top-2 rounded border border-slate-200 px-1.5 font-sans text-[11px] text-slate-500 dark:text-slate-400 dark:border-slate-700">/</kbd>
         </div>
         <button id="new" class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-400 dark:hover:border-indigo-400 dark:hover:text-indigo-300">
           <span aria-hidden="true">+</span> New memory
         </button>
       </div>
-      <p id="results" class="px-4 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-slate-400"></p>
+      <p id="results" class="px-4 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400"></p>
       <ul id="list" class="min-h-0 flex-1 overflow-y-auto px-2 pb-3"></ul>
     </aside>
 
@@ -64,12 +64,12 @@
         <button id="theme" class="rounded-lg border border-slate-200 bg-white/80 p-1.5 text-slate-500 backdrop-blur hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400 dark:hover:text-white" aria-label="Theme" title="Theme"></button>
         <button id="logout" class="rounded-lg border border-slate-200 bg-white/80 px-2.5 py-1.5 text-sm text-slate-600 backdrop-blur hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400 dark:hover:text-white">Sign out</button>
       </div>
-      <div class="absolute bottom-3 right-3 flex overflow-hidden rounded-lg border border-slate-200 bg-white/80 text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400">
+      <div class="absolute bottom-3 right-3 flex overflow-hidden rounded-lg border border-slate-200 bg-white/80 text-slate-600 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400">
         <button data-zoom="in" class="px-2.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Zoom in">+</button>
         <button data-zoom="out" class="border-x border-slate-200 px-2.5 py-1 hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800" aria-label="Zoom out">−</button>
         <button data-zoom="fit" class="px-2.5 py-1 text-xs hover:bg-slate-100 dark:hover:bg-slate-800">Fit</button>
       </div>
-      <p id="empty" class="absolute inset-0 hidden items-center justify-center p-6 text-center text-sm text-slate-400">No memories yet. Agents add them as they learn about you, or press <kbd class="mx-1 rounded border px-1">n</kbd> to add one.</p>
+      <p id="empty" class="absolute inset-0 hidden items-center justify-center p-6 text-center text-sm text-slate-500 dark:text-slate-400">No memories yet. Agents add them as they learn about you, or press <kbd class="mx-1 rounded border px-1">n</kbd> to add one.</p>
     </main>
 
     <!-- Detail -->
@@ -78,7 +78,7 @@
         <h2 class="text-sm font-semibold">Overview</h2>
         <dl id="stats" class="mt-4 grid grid-cols-3 gap-2 text-center"></dl>
         <p class="mt-6 text-sm leading-relaxed text-slate-500 dark:text-slate-400">Each dot is something your agents know about you. Related memories are linked by meaning and grouped into coloured clusters.</p>
-        <p class="mt-4 text-xs text-slate-400">Select a memory to read, edit or forget it.</p>
+        <p class="mt-4 text-xs text-slate-500 dark:text-slate-400">Select a memory to read, edit or forget it.</p>
       </div>
       <div id="detail-body" class="hidden min-h-0 flex-1 flex-col overflow-y-auto p-5">
         <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -90,30 +90,30 @@
         <textarea id="d-content" rows="4" maxlength="500"
           class="mt-3 block w-full resize-none rounded-lg border border-transparent bg-transparent p-0 text-[15px] leading-relaxed outline-none focus:border-slate-200 focus:bg-white focus:p-2 dark:focus:border-slate-700 dark:focus:bg-slate-950"></textarea>
         <dl class="mt-3 grid grid-cols-2 gap-2 text-xs">
-          <div class="rounded-lg bg-white p-2.5 dark:bg-slate-950"><dt class="text-slate-400">From</dt><dd id="d-date" class="mt-0.5 font-medium tabular-nums"></dd></div>
-          <div class="rounded-lg bg-white p-2.5 dark:bg-slate-950"><dt class="text-slate-400">Recalled</dt><dd id="d-uses" class="mt-0.5 font-medium tabular-nums"></dd></div>
+          <div class="rounded-lg bg-white p-3 dark:bg-slate-950"><dt class="text-slate-500 dark:text-slate-400">From</dt><dd id="d-date" class="mt-0.5 font-medium tabular-nums"></dd></div>
+          <div class="rounded-lg bg-white p-3 dark:bg-slate-950"><dt class="text-slate-500 dark:text-slate-400">Recalled</dt><dd id="d-uses" class="mt-0.5 font-medium tabular-nums"></dd></div>
         </dl>
         <div class="mt-3 flex gap-2">
           <button id="d-save" disabled class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-default disabled:opacity-40">Save</button>
-          <button id="d-forget" class="rounded-lg px-3 py-1.5 text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10">Forget</button>
+          <button id="d-forget" class="rounded-lg px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10">Forget</button>
         </div>
-        <h3 class="mt-7 text-xs font-medium uppercase tracking-wide text-slate-400">Linked memories</h3>
+        <h3 class="mt-7 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Linked memories</h3>
         <ul id="d-links" class="mt-2 space-y-1"></ul>
       </div>
     </aside>
   </div>
 
   <!-- New memory -->
-  <dialog id="new-dialog" class="m-auto w-[min(32rem,calc(100%-2rem))] rounded-2xl border border-slate-200 bg-white p-0 text-slate-800 shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
-    <form id="new-form" method="dialog" class="p-5">
+  <dialog id="new-dialog" class="m-auto w-[min(32rem,calc(100%-2rem))] rounded-2xl border border-slate-200 bg-white p-5 text-slate-800 shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+    <form id="new-form" method="dialog">
       <h2 class="font-semibold">New memory</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">One fact about you, written in the third person.</p>
       <textarea id="new-content" rows="3" maxlength="500" required placeholder="User prefers aisle seats on long flights."
-        class="mt-4 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-indigo-500/30 placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 dark:border-slate-700 dark:bg-slate-950"></textarea>
-      <label for="new-date" class="mt-3 block text-sm text-slate-600 dark:text-slate-400">When was this true? <span class="text-slate-400">(optional)</span></label>
+        class="mt-4 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-indigo-500/30 placeholder:text-slate-500 focus:border-indigo-500 focus:ring-4 dark:border-slate-700 dark:bg-slate-950"></textarea>
+      <label for="new-date" class="mt-3 block text-sm text-slate-600 dark:text-slate-400">When was this true? <span class="text-slate-500 dark:text-slate-400">(optional)</span></label>
       <input id="new-date" placeholder="2024-05 or 2024-05-17"
         class="mt-1 block w-48 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none ring-indigo-500/30 focus:border-indigo-500 focus:ring-4 dark:border-slate-700 dark:bg-slate-950">
-      <p id="new-error" class="mt-2 min-h-5 text-sm text-rose-600 dark:text-rose-400"></p>
+      <p id="new-error" class="mt-2 min-h-5 text-sm text-rose-700 dark:text-rose-400"></p>
       <div class="mt-2 flex justify-end gap-2">
         <button type="button" id="new-cancel" class="rounded-lg px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
         <button id="new-save" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500">Save</button>

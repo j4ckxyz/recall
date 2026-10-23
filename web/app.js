@@ -208,7 +208,7 @@ function renderList(order) {
     dot.style.background = colour(n.cluster);
     const body = el('span', 'min-w-0');
     body.append(el('span', 'line-clamp-2 text-[13px] leading-snug text-slate-700 dark:text-slate-300', n.content));
-    body.append(el('span', 'mt-0.5 block text-[11px] tabular-nums text-slate-400', n.date));
+    body.append(el('span', 'mt-0.5 block text-[11px] tabular-nums text-slate-500 dark:text-slate-400', n.date));
     b.append(dot, body);
     b.addEventListener('click', () => { select(i); graph.focus(i); delete $('sidebar').dataset.open; });
     li.append(b);
@@ -233,7 +233,7 @@ function renderLegend() {
     if (clusterFilter === c) b.classList.add('ring-2', 'ring-indigo-500/40');
     const dot = el('span', 'size-2 rounded-full');
     dot.style.background = colour(c);
-    b.append(dot, el('span', null, clusterName(c)), el('span', 'tabular-nums text-slate-400', String(count)));
+    b.append(dot, el('span', null, clusterName(c)), el('span', 'tabular-nums text-slate-500 dark:text-slate-400', String(count)));
     b.addEventListener('click', () => { clusterFilter = clusterFilter === c ? null : c; renderLegend(); runSearch(true); graph.draw(); });
     legend.append(b);
   }
@@ -259,8 +259,8 @@ function renderDetail() {
     stats.replaceChildren();
     const clusters = new Set(data.nodes.map((n) => n.cluster).filter((c) => c !== LONE)).size;
     for (const [label, value] of [['memories', data.total], ['links', data.edges.length], ['clusters', clusters]]) {
-      const d = el('div', 'rounded-lg bg-white px-2 py-3 dark:bg-slate-950');
-      d.append(el('dd', 'text-lg font-semibold tabular-nums', String(value ?? 0)), el('dt', 'text-[11px] text-slate-400', label));
+      const d = el('div', 'rounded-lg bg-white px-3 py-3 dark:bg-slate-950');
+      d.append(el('dd', 'text-lg font-semibold tabular-nums', String(value ?? 0)), el('dt', 'text-[11px] text-slate-500 dark:text-slate-400', label));
       stats.append(d);
     }
     return;
@@ -275,13 +275,13 @@ function renderDetail() {
   $('d-uses').textContent = `${n.uses} time${n.uses === 1 ? '' : 's'}`;
   const links = $('d-links');
   links.replaceChildren();
-  if (!neighbours[selected].length) links.append(el('li', 'text-sm text-slate-400', 'Nothing closely related yet.'));
+  if (!neighbours[selected].length) links.append(el('li', 'text-sm text-slate-500 dark:text-slate-400', 'Nothing closely related yet.'));
   for (const [j, w] of neighbours[selected].slice(0, 12)) {
     const m = data.nodes[j];
     const b = el('button', 'flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] leading-snug hover:bg-slate-200/60 dark:hover:bg-slate-800/70');
     const dot = el('span', 'mt-1.5 size-2 shrink-0 rounded-full');
     dot.style.background = colour(m.cluster);
-    b.append(dot, el('span', 'min-w-0 flex-1 text-slate-700 dark:text-slate-300', m.content), el('span', 'shrink-0 text-[11px] tabular-nums text-slate-400', `${Math.round(w * 100)}%`));
+    b.append(dot, el('span', 'min-w-0 flex-1 text-slate-700 dark:text-slate-300', m.content), el('span', 'shrink-0 text-[11px] tabular-nums text-slate-500 dark:text-slate-400', `${Math.round(w * 100)}%`));
     b.addEventListener('click', () => { select(j); graph.focus(j); });
     const li = el('li');
     li.append(b);
@@ -325,6 +325,13 @@ async function saveNew(e) {
 }
 
 // ---- graph -------------------------------------------------------------------------
+/** Deterministic pseudo-random number in [0, 1) from a string and a salt. */
+function hash01(str, salt) {
+  let h = 2166136261 ^ salt;
+  for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+  return ((h >>> 0) % 100000) / 100000;
+}
+
 class Graph {
   constructor(canvas) {
     this.c = canvas;
@@ -348,8 +355,9 @@ class Graph {
     this.nodes = nodes.map((n, i) => {
       const old = prev.get(n.id);
       if (old) return { ...old, id: n.id, i };
-      const a = angle.get(n.cluster) + (Math.random() - 0.5) * 0.8;
-      const r = 220 + Math.random() * 60;
+      // Seeded by the id, so the map looks the same on every visit.
+      const a = angle.get(n.cluster) + (hash01(n.id, 1) - 0.5) * 0.8;
+      const r = 220 + hash01(n.id, 2) * 60;
       return { id: n.id, i, x: Math.cos(a) * r, y: Math.sin(a) * r, vx: 0, vy: 0 };
     });
     this.edges = edges;
@@ -379,7 +387,7 @@ class Graph {
         for (const q of bucket) {
           if (q === p) continue;
           let x = p.x - q.x, y = p.y - q.y, d2 = x * x + y * y;
-          if (d2 === 0) { x = Math.random() - 0.5; y = Math.random() - 0.5; d2 = 0.01; }
+          if (d2 === 0) { x = hash01(p.id, 3) - 0.5; y = hash01(q.id, 4) - 0.5; d2 = 0.01; }
           if (d2 > cell * cell * 4) continue;
           const f = (900 * alpha) / d2;
           p.vx += x * f; p.vy += y * f;
@@ -453,8 +461,9 @@ class Graph {
     if (!this.nodes.length || !this.w) return;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const p of this.nodes) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
-    const pad = Math.min(120, this.w * 0.12);
-    const k = Math.min(2.2, Math.min((this.w - pad) / (x1 - x0 || 1), (this.h - pad - 20) / (y1 - y0 || 1)));
+    // Extra horizontal room: node labels extend sideways from the dots.
+    const padX = Math.min(320, this.w * 0.25), padY = Math.min(140, this.h * 0.15);
+    const k = Math.min(2.2, Math.min((this.w - padX) / (x1 - x0 || 1), (this.h - padY) / (y1 - y0 || 1)));
     this.view = { k, x: this.w / 2 - ((x0 + x1) / 2) * k, y: this.h / 2 + 10 - ((y0 + y1) / 2) * k };
     this.draw();
   }
@@ -595,7 +604,8 @@ class Graph {
     }
 
     // Cluster names at their centroids (zoomed out).
-    if (v.k < 1.25 && focusNode == null) {
+    // Hidden while searching or focusing, so they never cover result labels.
+    if (v.k < 1.25 && focusNode == null && !matches) {
       const sum = new Map();
       for (const p of this.nodes) {
         const c = data.nodes[p.i].cluster;

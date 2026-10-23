@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "web/index.html"
+        ],
+        "createdAt": "2026-10-23T23:32:13.026Z",
+        "reason": "Claude triage: the 2 flagged containers (stat boxes p-3, new-memory dialog p-5) are hidden at scan time (signed-out #app, closed <dialog>), so padding measures as 0; visible containers verified in 2x screenshots"
+      }
+    ]
+  }
+}
