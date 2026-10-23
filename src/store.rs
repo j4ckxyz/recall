@@ -730,6 +730,10 @@ impl Store {
             }
         }
 
+        // Words in 30%+ of all memories (usually the user's name: "Jack wants…")
+        // describe everything, so they can't name a topic.
+        let common = |w: &str| n >= 5 && postings.get(w).is_some_and(|d| d.len() * 10 >= n * 3);
+
         // Renumber clusters by size; name each by its most distinctive word.
         let mut sizes: HashMap<usize, usize> = HashMap::new();
         label.iter().for_each(|l| *sizes.entry(*l).or_default() += 1);
@@ -742,7 +746,7 @@ impl Store {
             let members: Vec<usize> = (0..n).filter(|&i| cluster[i] == r).collect();
             let mut count: HashMap<&str, usize> = HashMap::new();
             for &i in &members {
-                for w in doc_words[i].iter().filter(|w| w.len() > 3 && !w.chars().all(|c| c.is_ascii_digit()) && !GENERIC.contains(&w.as_str())) {
+                for w in doc_words[i].iter().filter(|w| w.len() > 3 && !w.chars().all(|c| c.is_ascii_digit()) && !GENERIC.contains(&w.as_str()) && !common(w)) {
                     *count.entry(w.as_str()).or_default() += 1;
                 }
             }
@@ -751,7 +755,8 @@ impl Store {
             let centre: Option<Vec<f32>> = self.embedder.map(|e| {
                 let mut c = vec![0f32; e.dim()];
                 for &i in &members {
-                    c.iter_mut().zip(e.embed(&doc_words[i].join(" "))).for_each(|(a, b)| *a += b);
+                    let text: Vec<&str> = doc_words[i].iter().map(String::as_str).filter(|w| !common(w)).collect();
+                    c.iter_mut().zip(e.embed(&text.join(" "))).for_each(|(a, b)| *a += b);
                 }
                 c
             });
@@ -903,6 +908,19 @@ mod tests {
         assert_eq!(s.search("greyhund", 5, Mode::Hybrid).unwrap()[0].content, "User has a rescue greyhound.");
         assert_eq!(edit_distance("freind", "friend", 1), Some(1));
         assert_eq!(edit_distance("cat", "dog", 2), None);
+    }
+
+    #[test]
+    fn cluster_names_skip_the_users_name() {
+        let s = store();
+        for f in [
+            "Jack is vegetarian and cooks curry.", "Jack cooks pasta on weekends.", "Jack likes cooking ramen.",
+            "Jack runs marathons.", "Jack runs every morning.", "Jack runs trails on weekends.",
+        ] {
+            s.remember(f, None, None, "t").unwrap();
+        }
+        let g = s.graph(100).unwrap();
+        assert!(!g.labels.iter().any(|l| l == "jack"), "labels: {:?}", g.labels);
     }
 
     #[test]

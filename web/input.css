@@ -10,4 +10,5 @@
   :root { color-scheme: light; }
   :root.dark { color-scheme: dark; }
   dialog::backdrop { background: rgb(2 6 23 / 0.4); }
+  .dark dialog::backdrop { background: rgb(0 0 0 / 0.6); }
 }

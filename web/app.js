@@ -53,7 +53,7 @@ const PALETTE = [
 const isDark = () => document.documentElement.classList.contains('dark');
 const LONE = 9999;
 function colour(cluster) {
-  if (cluster === LONE) return isDark() ? '#64748b' : '#94a3b8';
+  if (cluster === LONE) return isDark() ? '#737373' : '#94a3b8';
   return PALETTE[cluster % PALETTE.length][isDark() ? 1 : 0];
 }
 
@@ -202,13 +202,13 @@ function renderList(order) {
   for (const i of idx.slice(0, 400)) {
     const n = data.nodes[i];
     const li = el('li');
-    const b = el('button', 'group flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-slate-200/60 dark:hover:bg-slate-800/70');
-    if (i === selected) b.classList.add('bg-indigo-50', 'dark:bg-indigo-500/10');
+    const b = el('button', 'group flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-slate-200/60 dark:hover:bg-neutral-800/70');
+    if (i === selected) b.classList.add('bg-indigo-50', 'dark:bg-white/10');
     const dot = el('span', 'mt-1.5 size-2 shrink-0 rounded-full');
     dot.style.background = colour(n.cluster);
     const body = el('span', 'min-w-0');
-    body.append(el('span', 'line-clamp-2 text-[13px] leading-snug text-slate-700 dark:text-slate-300', n.content));
-    body.append(el('span', 'mt-0.5 block text-[11px] tabular-nums text-slate-500 dark:text-slate-400', n.date));
+    body.append(el('span', 'line-clamp-2 text-[13px] leading-snug text-slate-700 dark:text-neutral-300', n.content));
+    body.append(el('span', 'mt-0.5 block text-[11px] tabular-nums text-slate-500 dark:text-neutral-400', n.date));
     b.append(dot, body);
     b.addEventListener('click', () => { select(i); graph.focus(i); delete $('sidebar').dataset.open; });
     li.append(b);
@@ -229,11 +229,11 @@ function renderLegend() {
   data.nodes.forEach((n) => counts.set(n.cluster, (counts.get(n.cluster) || 0) + 1));
   const top = [...counts.entries()].filter(([c]) => c !== LONE).sort((a, b) => b[1] - a[1]).slice(0, 8);
   for (const [c, count] of top) {
-    const b = el('button', 'pointer-events-auto flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs text-slate-600 backdrop-blur hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:border-slate-700');
-    if (clusterFilter === c) b.classList.add('ring-2', 'ring-indigo-500/40');
+    const b = el('button', 'pointer-events-auto flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs text-slate-600 backdrop-blur hover:border-slate-300 dark:border-neutral-800 dark:bg-neutral-900/80 dark:text-neutral-300 dark:hover:border-neutral-700');
+    if (clusterFilter === c) b.classList.add('ring-2', 'ring-indigo-500/40', 'dark:ring-white/30');
     const dot = el('span', 'size-2 rounded-full');
     dot.style.background = colour(c);
-    b.append(dot, el('span', null, clusterName(c)), el('span', 'tabular-nums text-slate-500 dark:text-slate-400', String(count)));
+    b.append(dot, el('span', null, clusterName(c)), el('span', 'tabular-nums text-slate-500 dark:text-neutral-400', String(count)));
     b.addEventListener('click', () => { clusterFilter = clusterFilter === c ? null : c; renderLegend(); runSearch(true); graph.draw(); });
     legend.append(b);
   }
@@ -259,8 +259,8 @@ function renderDetail() {
     stats.replaceChildren();
     const clusters = new Set(data.nodes.map((n) => n.cluster).filter((c) => c !== LONE)).size;
     for (const [label, value] of [['memories', data.total], ['links', data.edges.length], ['clusters', clusters]]) {
-      const d = el('div', 'rounded-lg bg-white px-3 py-3 dark:bg-slate-950');
-      d.append(el('dd', 'text-lg font-semibold tabular-nums', String(value ?? 0)), el('dt', 'text-[11px] text-slate-500 dark:text-slate-400', label));
+      const d = el('div', 'rounded-lg bg-white px-3 py-3 dark:bg-neutral-950');
+      d.append(el('dd', 'text-lg font-semibold tabular-nums', String(value ?? 0)), el('dt', 'text-[11px] text-slate-500 dark:text-neutral-400', label));
       stats.append(d);
     }
     return;
@@ -275,13 +275,13 @@ function renderDetail() {
   $('d-uses').textContent = `${n.uses} time${n.uses === 1 ? '' : 's'}`;
   const links = $('d-links');
   links.replaceChildren();
-  if (!neighbours[selected].length) links.append(el('li', 'text-sm text-slate-500 dark:text-slate-400', 'Nothing closely related yet.'));
+  if (!neighbours[selected].length) links.append(el('li', 'text-sm text-slate-500 dark:text-neutral-400', 'Nothing closely related yet.'));
   for (const [j, w] of neighbours[selected].slice(0, 12)) {
     const m = data.nodes[j];
-    const b = el('button', 'flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] leading-snug hover:bg-slate-200/60 dark:hover:bg-slate-800/70');
+    const b = el('button', 'flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] leading-snug hover:bg-slate-200/60 dark:hover:bg-neutral-800/70');
     const dot = el('span', 'mt-1.5 size-2 shrink-0 rounded-full');
     dot.style.background = colour(m.cluster);
-    b.append(dot, el('span', 'min-w-0 flex-1 text-slate-700 dark:text-slate-300', m.content), el('span', 'shrink-0 text-[11px] tabular-nums text-slate-500 dark:text-slate-400', `${Math.round(w * 100)}%`));
+    b.append(dot, el('span', 'min-w-0 flex-1 text-slate-700 dark:text-neutral-300', m.content), el('span', 'shrink-0 text-[11px] tabular-nums text-slate-500 dark:text-neutral-400', `${Math.round(w * 100)}%`));
     b.addEventListener('click', () => { select(j); graph.focus(j); });
     const li = el('li');
     li.append(b);
@@ -560,7 +560,7 @@ class Graph {
       const hot = focusNode != null && (a === focusNode || b === focusNode);
       const faded = dim(a) || dim(b);
       const ca = data.nodes[a].cluster, same = ca === data.nodes[b].cluster && ca !== LONE;
-      ctx.strokeStyle = hot ? colour(data.nodes[focusNode].cluster) : same ? colour(ca) : dark ? '#94a3b8' : '#64748b';
+      ctx.strokeStyle = hot ? colour(data.nodes[focusNode].cluster) : same ? colour(ca) : dark ? '#a3a3a3' : '#64748b';
       ctx.globalAlpha = hot ? 0.9 : faded ? 0.04 : same ? 0.25 + w * 0.35 : 0.07;
       ctx.lineWidth = (hot ? 1.8 : same ? 0.8 + w * 1.4 : 0.6) / Math.sqrt(v.k);
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
@@ -575,7 +575,7 @@ class Graph {
       if (p.i === selected || p.i === this.hover) {
         ctx.globalAlpha = 1;
         ctx.lineWidth = 2.5 / v.k;
-        ctx.strokeStyle = dark ? '#f8fafc' : '#0f172a';
+        ctx.strokeStyle = dark ? '#fafafa' : '#0f172a';
         ctx.beginPath(); ctx.arc(p.x, p.y, r + 3 / v.k, 0, Math.PI * 2); ctx.stroke();
       }
     }
@@ -585,20 +585,33 @@ class Graph {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const showAll = v.k >= 1.25;
+    // Most important first: the focused memory, its links, search hits, then
+    // bigger nodes. A label that would overlap one already placed is skipped.
+    const wanted = [];
     for (const p of this.nodes) {
       const focused = focusNode != null && lit.has(p.i);
       const searchHit = matches && matches.size <= 25 && matches.has(p.i);
       if (!showAll && !focused && !searchHit) continue;
       if (dim(p.i) && !focused) continue;
+      const rank = p.i === focusNode ? 0 : focused ? 1 : searchHit ? 2 : 3;
+      wanted.push([rank, -this.radius[p.i], p]);
+    }
+    wanted.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const size = 11 / Math.min(v.k, 1.6), gap = 2 / v.k;
+    const placed = [];
+    for (const [, , p] of wanted) {
       const n = data.nodes[p.i];
       const text = n.content.length > 42 ? `${n.content.slice(0, 40).trimEnd()}…` : n.content;
-      const size = 11 / Math.min(v.k, 1.6);
       ctx.font = `${p.i === focusNode ? 600 : 400} ${size}px ${font}`;
+      const w = ctx.measureText(text).width;
+      const y = p.y + this.radius[p.i] + 3 / v.k;
+      const box = [p.x - w / 2 - gap, y - gap, p.x + w / 2 + gap, y + size * 1.25 + gap];
+      if (placed.some((b) => box[0] < b[2] && b[0] < box[2] && box[1] < b[3] && b[1] < box[3])) continue;
+      placed.push(box);
       ctx.globalAlpha = 1;
       ctx.lineWidth = 3 / v.k;
-      ctx.strokeStyle = dark ? '#020617' : '#ffffff';
-      ctx.fillStyle = dark ? '#e2e8f0' : '#334155';
-      const y = p.y + this.radius[p.i] + 3 / v.k;
+      ctx.strokeStyle = dark ? '#0a0a0a' : '#ffffff';
+      ctx.fillStyle = dark ? '#e5e5e5' : '#334155';
       ctx.strokeText(text, p.x, y);
       ctx.fillText(text, p.x, y);
     }
@@ -620,7 +633,7 @@ class Graph {
         ctx.font = `600 ${13 / v.k}px ${font}`;
         ctx.globalAlpha = 0.9;
         ctx.lineWidth = 4 / v.k;
-        ctx.strokeStyle = dark ? '#020617' : '#ffffff';
+        ctx.strokeStyle = dark ? '#0a0a0a' : '#ffffff';
         ctx.fillStyle = colour(c);
         const x = s.x / s.n, y = s.top - 10 / v.k;
         ctx.strokeText(clusterName(c), x, y);
