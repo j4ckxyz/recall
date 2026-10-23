@@ -262,7 +262,9 @@ jobs:
       - name: Run the MCPB bundle's Windows binary
         shell: powershell
         run: |
-          Expand-Archive -Force dist\recall.mcpb mcpb-x
+          # .mcpb is a zip; Expand-Archive only accepts the .zip extension.
+          Copy-Item dist\recall.mcpb recall-mcpb.zip
+          Expand-Archive -Force recall-mcpb.zip mcpb-x
           $env:RECALL_HOME = "$env:RUNNER_TEMP\mcpb-home"
           $out = '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | & .\mcpb-x\server\recall.exe mcp
           if (-not ($out -match '"remember"')) { throw "bundle failed: $out" }
