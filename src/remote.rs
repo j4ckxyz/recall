@@ -124,10 +124,12 @@ impl Remote {
         let mut stdout = std::io::stdout().lock();
         for line in stdin.lines() {
             let line = line?;
+            // Windows PowerShell prefixes piped text with a UTF-8 BOM.
+            let line = line.trim_start_matches('\u{feff}');
             if line.trim().is_empty() {
                 continue;
             }
-            let reply = match serde_json::from_str::<Value>(&line) {
+            let reply = match serde_json::from_str::<Value>(line) {
                 Ok(msg) => match self.send(&msg) {
                     Ok(r) => r,
                     // Answer requests (not notifications) so the agent doesn't hang.

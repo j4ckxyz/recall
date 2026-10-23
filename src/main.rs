@@ -202,10 +202,12 @@ fn stdio(mut server: Server) -> Result<()> {
     let mut stdout = std::io::stdout().lock();
     for line in stdin.lines() {
         let line = line?;
+        // Windows PowerShell prefixes piped text with a UTF-8 BOM.
+        let line = line.trim_start_matches('\u{feff}');
         if line.trim().is_empty() {
             continue;
         }
-        let reply = match serde_json::from_str::<Value>(&line) {
+        let reply = match serde_json::from_str::<Value>(line) {
             Ok(msg) => server.handle(&msg),
             Err(_) => Some(json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": "parse error" } })),
         };
