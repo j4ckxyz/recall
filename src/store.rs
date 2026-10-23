@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS tokens(
   name TEXT PRIMARY KEY, hash BLOB NOT NULL UNIQUE, scope TEXT NOT NULL, created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS sessions(hash BLOB PRIMARY KEY, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS sessions(hash BLOB PRIMARY KEY, expires INTEGER NOT NULL, login TEXT);
 PRAGMA user_version = 1;
 ";
 
@@ -151,6 +151,11 @@ impl Store {
             conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")?;
         }
         conn.execute_batch(SCHEMA)?;
+        // v0.1.1-0.1.3 stores: sessions gained a `login` column.
+        let has_login: bool = conn.query_row("SELECT count(*) FROM pragma_table_info('sessions') WHERE name = 'login'", [], |r| r.get::<_, i64>(0))? > 0;
+        if !has_login {
+            conn.execute_batch("ALTER TABLE sessions ADD COLUMN login TEXT;")?;
+        }
         let s = Store { conn, embedder, min_similarity: MIN_SIMILARITY, cache: RefCell::new(None) };
         s.backfill_vectors()?;
         Ok(s)
@@ -577,17 +582,20 @@ impl Store {
         Ok(())
     }
 
-    pub fn session_add(&self, hash: &[u8], expires: i64) -> Result<()> {
+    /// `login` is the Tailscale user for tailnet sign-ins, `None` for password.
+    pub fn session_add(&self, hash: &[u8], expires: i64, login: Option<&str>) -> Result<()> {
         self.conn.execute("DELETE FROM sessions WHERE expires < ?1", [now()])?;
-        self.conn.execute("INSERT INTO sessions(hash, expires) VALUES (?1, ?2)", params![hash, expires])?;
+        self.conn.execute("INSERT INTO sessions(hash, expires, login) VALUES (?1, ?2, ?3)", params![hash, expires, login])?;
         Ok(())
     }
 
-    pub fn session_valid(&self, hash: &[u8]) -> Result<bool> {
+    /// For a live session: who it belongs to ("password" or a Tailscale login).
+    pub fn session_user(&self, hash: &[u8]) -> Result<Option<String>> {
         Ok(self
             .conn
-            .prepare_cached("SELECT EXISTS(SELECT 1 FROM sessions WHERE hash = ?1 AND expires > ?2)")?
-            .query_row(params![hash, now()], |r| r.get(0))?)
+            .prepare_cached("SELECT coalesce(login, 'password') FROM sessions WHERE hash = ?1 AND expires > ?2")?
+            .query_row(params![hash, now()], |r| r.get(0))
+            .optional()?)
     }
 
     pub fn session_remove(&self, hash: Option<&[u8]>) -> Result<()> {

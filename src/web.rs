@@ -1,4 +1,5 @@
-//! Web UI: embedded static assets and a small JSON API behind a password.
+//! Web UI: embedded static assets and a small JSON API behind a password,
+//! or automatic sign-in by Tailscale identity on a tailnet.
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -7,6 +8,7 @@ use serde_json::{Value, json};
 
 use crate::auth;
 use crate::store::{Mode, Saved, Store, now};
+use crate::tailnet::Identity;
 
 pub const INDEX_HTML: &str = include_str!("../web/index.html");
 pub const APP_JS: &str = include_str!("../web/app.js");
@@ -14,7 +16,15 @@ pub const APP_CSS: &str = include_str!("../web/app.css");
 pub const ICON_PNG: &[u8] = include_bytes!("../mcpb/icon.png");
 
 pub const PASSWORD_KEY: &str = "web_password";
+/// "off" disables Tailscale sign-in.
+pub const TAILNET_KEY: &str = "tailnet_login";
+/// Extra Tailscale logins allowed besides the server's owner, one per line.
+pub const TAILNET_ALLOW_KEY: &str = "tailnet_allow";
 const COOKIE: &str = "recall_session";
+/// Set on sign-out so Tailscale sign-in doesn't immediately sign you back in.
+const SIGNED_OUT: &str = "recall_signed_out";
+/// Tailscale sessions are short; they renew silently while you're on the tailnet.
+const TAILNET_SESSION_SECS: i64 = 24 * 3600;
 /// Graph size cap; the most-used memories are kept.
 const MAX_NODES: usize = 1_500;
 const LOGIN_FAILURES_PER_MINUTE: usize = 5;
@@ -44,6 +54,26 @@ pub struct Request<'a> {
     pub cookie: Option<&'a str>,
     /// Set by the page's fetch calls; cross-site forms can't add it (CSRF guard).
     pub ajax: bool,
+    /// The tailnet user making the request, when known (only resolved for
+    /// sign-in requests).
+    pub tailnet: Option<Identity>,
+    /// Login of the user who owns this server's tailnet device.
+    pub owner: Option<&'a str>,
+    /// The browser signed out this session; don't sign it back in by itself.
+    pub signed_out: bool,
+}
+
+/// May this tailnet user use the web UI?
+pub fn tailnet_allowed(store: &Store, owner: Option<&str>, id: &Identity) -> crate::Result<bool> {
+    if id.tagged || store.setting(TAILNET_KEY)?.as_deref() == Some("off") {
+        return Ok(false);
+    }
+    let extra = store.setting(TAILNET_ALLOW_KEY)?.unwrap_or_default();
+    Ok(owner == Some(id.login.as_str()) || extra.lines().any(|l| l.trim().eq_ignore_ascii_case(&id.login)))
+}
+
+fn session_cookie_header(token: &str, max_age: i64) -> String {
+    format!("{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}")
 }
 
 /// Failed logins, for rate limiting.
@@ -64,25 +94,69 @@ fn route(store: &Store, guard: &mut Guard, req: &Request) -> crate::Result<Reply
         return Ok(Reply::error(403, "missing X-Requested-With header"));
     }
     let session = req.cookie.map(auth::session_hash);
-    let authed = match &session {
-        Some(h) => store.session_valid(h)?,
-        None => false,
+    let user = match &session {
+        Some(h) => store.session_user(h)?,
+        None => None,
     };
     let password_set = store.setting(PASSWORD_KEY)?.is_some();
 
     match (req.method, req.path) {
-        ("GET", "/api/session") => return Ok(Reply::json(200, json!({ "authed": authed, "passwordSet": password_set }))),
-        ("POST", "/api/login") => return login(store, guard, req),
+        ("GET", "/api/session") => {
+            let tailnet = match &req.tailnet {
+                Some(id) => Some((id, tailnet_allowed(store, req.owner, id)?)),
+                None => None,
+            };
+            let mut reply_headers = Vec::new();
+            let mut user = user;
+            // Instant sign-in: an allowed tailnet user gets a session without a
+            // prompt (page fetches only, so a cross-site image can't trigger it).
+            if user.is_none()
+                && req.ajax
+                && !req.signed_out
+                && let Some((id, true)) = tailnet
+            {
+                reply_headers.push(("Set-Cookie", tailnet_session(store, id)?));
+                user = Some(id.login.clone());
+            }
+            let mut r = Reply::json(200, json!({
+                "authed": user.is_some(),
+                "user": user,
+                "passwordSet": password_set,
+                "tailnet": tailnet.map(|(id, allowed)| json!({ "login": id.login, "name": id.name, "allowed": allowed })),
+            }));
+            r.headers = reply_headers;
+            return Ok(r);
+        }
+        ("POST", "/api/login") => {
+            let body: Value = serde_json::from_slice(req.body).unwrap_or(Value::Null);
+            if body["tailscale"] == true {
+                let Some(id) = &req.tailnet else { return Ok(Reply::error(403, "not connected over your tailnet")) };
+                if !tailnet_allowed(store, req.owner, id)? {
+                    return Ok(Reply::error(403, &format!("{} isn't allowed; on the server run: recall tailnet allow {}", id.login, id.login)));
+                }
+                let mut r = Reply::json(200, json!({ "ok": true }));
+                r.headers.push(("Set-Cookie", tailnet_session(store, id)?));
+                r.headers.push(("Set-Cookie", format!("{SIGNED_OUT}=; Path=/; SameSite=Strict; Max-Age=0")));
+                return Ok(r);
+            }
+            return login(store, guard, req);
+        }
         ("POST", "/api/logout") => {
             if let Some(h) = &session {
                 store.session_remove(Some(h))?;
             }
             let mut r = Reply::json(200, json!({ "ok": true }));
-            r.headers.push(("Set-Cookie", format!("{COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")));
+            r.headers.push(("Set-Cookie", session_cookie_header("", 0)));
+            r.headers.push(("Set-Cookie", format!("{SIGNED_OUT}=1; Path=/; SameSite=Strict")));
             return Ok(r);
         }
         _ => {}
     }
+    let authed = user.is_some();
+    let client = match user.as_deref() {
+        Some("password") | None => "web".to_string(),
+        Some(login) => format!("web ({login})"),
+    };
     if !authed {
         return Ok(Reply::error(401, "sign in first"));
     }
@@ -109,7 +183,7 @@ fn route(store: &Store, guard: &mut Guard, req: &Request) -> crate::Result<Reply
             let content = body["content"].as_str().unwrap_or("");
             let date = body["date"].as_str().filter(|d| !d.trim().is_empty());
             let replaces = body["replaces"].as_str().filter(|r| !r.is_empty());
-            match store.remember(content, date, replaces, "web") {
+            match store.remember(content, date, replaces, &client) {
                 Ok(Saved::New { sid, related }) => {
                     Reply::json(200, json!({ "id": sid, "related": related.iter().map(|m| &m.sid).collect::<Vec<_>>() }))
                 }
@@ -120,7 +194,7 @@ fn route(store: &Store, guard: &mut Guard, req: &Request) -> crate::Result<Reply
         }
         ("DELETE", p) if p.starts_with("/api/memories/") => {
             let sid = &p["/api/memories/".len()..];
-            if store.forget(sid, "web")? { Reply::json(200, json!({ "ok": true })) } else { Reply::error(404, "not found") }
+            if store.forget(sid, &client)? { Reply::json(200, json!({ "ok": true })) } else { Reply::error(404, "not found") }
         }
         _ => Reply::error(404, "not found"),
     })
@@ -143,15 +217,32 @@ fn login(store: &Store, guard: &mut Guard, req: &Request) -> crate::Result<Reply
         return Ok(Reply::error(401, "wrong password"));
     }
     let (token, hash) = auth::new_session()?;
-    store.session_add(&hash, now() + auth::SESSION_SECS)?;
+    store.session_add(&hash, now() + auth::SESSION_SECS, None)?;
     let mut r = Reply::json(200, json!({ "ok": true }));
-    r.headers.push(("Set-Cookie", format!("{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}", auth::SESSION_SECS)));
+    r.headers.push(("Set-Cookie", session_cookie_header(&token, auth::SESSION_SECS)));
+    r.headers.push(("Set-Cookie", format!("{SIGNED_OUT}=; Path=/; SameSite=Strict; Max-Age=0")));
     Ok(r)
+}
+
+/// Start a session for a tailnet user; returns its Set-Cookie value.
+fn tailnet_session(store: &Store, id: &Identity) -> crate::Result<String> {
+    let (token, hash) = auth::new_session()?;
+    store.session_add(&hash, now() + TAILNET_SESSION_SECS, Some(&id.login))?;
+    Ok(session_cookie_header(&token, TAILNET_SESSION_SECS))
 }
 
 /// The session token from a `Cookie` header.
 pub fn session_cookie(header: &str) -> Option<&str> {
-    header.split(';').filter_map(|c| c.trim().split_once('=')).find(|(k, _)| *k == COOKIE).map(|(_, v)| v)
+    cookie(header, COOKIE)
+}
+
+/// Whether the browser signed out this session (see `SIGNED_OUT`).
+pub fn signed_out(header: &str) -> bool {
+    cookie(header, SIGNED_OUT) == Some("1")
+}
+
+fn cookie<'a>(header: &'a str, name: &str) -> Option<&'a str> {
+    header.split(';').filter_map(|c| c.trim().split_once('=')).find(|(k, _)| *k == name).map(|(_, v)| v)
 }
 
 fn param(query: &str, key: &str) -> Option<String> {
@@ -183,7 +274,7 @@ mod tests {
 
     fn req<'a>(method: &'a str, path: &'a str, body: &'a [u8], cookie: Option<&'a str>) -> Request<'a> {
         let (path, query) = path.split_once('?').unwrap_or((path, ""));
-        Request { method, path, query, body, cookie, ajax: true }
+        Request { method, path, query, body, cookie, ajax: true, tailnet: None, owner: None, signed_out: false }
     }
 
     #[test]
@@ -223,8 +314,50 @@ mod tests {
     }
 
     #[test]
+    fn tailnet_sign_in() {
+        let s = Store::open_in_memory(None).unwrap();
+        let mut g = Guard::default();
+        let jack = Identity { login: "jack@example.com".into(), name: "Jack".into(), tagged: false };
+        let eve = Identity { login: "eve@example.com".into(), name: "Eve".into(), tagged: false };
+        let ci = Identity { login: "tagged-devices".into(), name: "ci".into(), tagged: true };
+        let session = |id: &Identity, signed_out: bool, ajax: bool| {
+            let mut r = req("GET", "/api/session", b"", None);
+            r.tailnet = Some(id.clone());
+            r.owner = Some("jack@example.com");
+            r.signed_out = signed_out;
+            r.ajax = ajax;
+            r
+        };
+        let body = |r: &Reply| serde_json::from_slice::<Value>(&r.body).unwrap();
+
+        // The owner is signed in instantly and can use the API.
+        let r = api(&s, &mut g, &session(&jack, false, true));
+        assert_eq!(body(&r)["authed"], true);
+        let token = session_cookie(r.headers[0].1.split(';').next().unwrap()).unwrap().to_string();
+        assert_eq!(api(&s, &mut g, &req("GET", "/api/graph", b"", Some(&token))).status, 200);
+        // Writes are attributed to the Tailscale user in the audit log.
+        api(&s, &mut g, &req("POST", "/api/memories", br#"{"content":"User likes owls."}"#, Some(&token)));
+        assert_eq!(s.audit_log(1).unwrap()[0].3, "web (jack@example.com)");
+
+        // Not after signing out, nor from a non-page request, other users or tagged devices.
+        assert_eq!(body(&api(&s, &mut g, &session(&jack, true, true)))["authed"], false);
+        assert_eq!(body(&api(&s, &mut g, &session(&jack, false, false)))["authed"], false);
+        let r = body(&api(&s, &mut g, &session(&eve, false, true)));
+        assert_eq!((r["authed"].clone(), r["tailnet"]["allowed"].clone()), (json!(false), json!(false)));
+        assert_eq!(body(&api(&s, &mut g, &session(&ci, false, true)))["authed"], false);
+
+        // Allow-listing and turning it off.
+        s.set_setting(TAILNET_ALLOW_KEY, Some("eve@example.com")).unwrap();
+        assert_eq!(body(&api(&s, &mut g, &session(&eve, false, true)))["authed"], true);
+        s.set_setting(TAILNET_KEY, Some("off")).unwrap();
+        assert_eq!(body(&api(&s, &mut g, &session(&jack, false, true)))["authed"], false);
+    }
+
+    #[test]
     fn decodes() {
         assert_eq!(percent_decode("vegitarian%20food+now%"), "vegitarian food now%");
         assert_eq!(session_cookie("a=b; recall_session=abc; c=d"), Some("abc"));
+        assert!(signed_out("recall_signed_out=1; recall_session=abc"));
+        assert!(!signed_out("recall_session=abc"));
     }
 }

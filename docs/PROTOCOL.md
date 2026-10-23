@@ -177,6 +177,7 @@ key the same way Recall does. Nothing in user space can.
 | Rogue agent overwrites or wipes | `forget` and `replaces` are soft deletes; `recall trash` / `recall restore`; audit log names the client. |
 | Flooding | 30 writes/min per connection; 5,000 active cap. |
 | Remote access | Loopback default, scoped bearer tokens, Host/Origin checks, body limit. |
+| Web UI access | Tailscale identity via the local daemon's `whois` (owner of the server's device, plus an explicit allow-list; tagged devices never), else a PBKDF2 password. HttpOnly SameSite=Strict sessions, CSRF header, strict CSP, Host allow-list. |
 | Supply chain | 7 direct dependencies, no ML runtime, no network at runtime, `Cargo.lock` committed. |
 
 ---

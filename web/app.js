@@ -70,18 +70,33 @@ let graph = null;
 async function main() {
   wireStatic();
   const s = await api('/api/session').catch(() => ({ authed: false, passwordSet: true }));
-  if (s.authed) showApp(); else showLogin(s.passwordSet);
+  if (s.authed) showApp(s); else showLogin(s);
 }
 
-function showLogin(passwordSet = true) {
+function showLogin(s = {}) {
   $('app').classList.add('hidden'); $('app').classList.remove('grid');
   $('login').classList.remove('hidden'); $('login').classList.add('flex');
-  $('login-hint').classList.toggle('hidden', passwordSet);
-  $('password').focus();
+  const ts = s.tailnet;
+  // On the tailnet: offer one-click sign-in, or say how to get allowed.
+  $('ts-signin').classList.toggle('hidden', !ts?.allowed);
+  if (ts?.allowed) $('ts-who').textContent = `as ${ts.login}`;
+  const denied = ts && !ts.allowed;
+  $('ts-denied').classList.toggle('hidden', !denied);
+  if (denied) $('ts-denied').textContent = `You're on the tailnet as ${ts.login}, which isn't allowed to sign in with Tailscale. To allow it, run this on the server: recall tailnet allow ${ts.login}`;
+  $('login-hint').classList.toggle('hidden', s.passwordSet !== false);
+  // With Tailscale on offer, the password button steps back to an outline.
+  const secondary = ['bg-transparent', 'dark:bg-transparent', 'border', 'border-slate-300', 'dark:border-neutral-700', 'text-slate-700', 'dark:text-neutral-200', 'hover:bg-slate-50', 'dark:hover:bg-neutral-800'];
+  const primary = ['bg-indigo-600', 'dark:bg-white', 'text-white', 'dark:text-neutral-950', 'hover:bg-indigo-500', 'dark:hover:bg-neutral-200'];
+  $('pw-button').classList.remove(...(ts?.allowed ? primary : secondary));
+  $('pw-button').classList.add(...(ts?.allowed ? secondary : primary));
+  (ts?.allowed ? $('ts-button') : $('password')).focus();
 }
 
-async function showApp() {
+async function showApp(s = {}) {
   $('login').classList.add('hidden'); $('login').classList.remove('flex');
+  const viaTailscale = s.user && s.user !== 'password';
+  $('who').classList.toggle('hidden', !viaTailscale);
+  $('who').textContent = viaTailscale ? s.user : '';
   $('app').classList.remove('hidden'); $('app').classList.add('grid');
   if (!graph) graph = new Graph($('graph'));
   await load();
@@ -114,11 +129,21 @@ function wireStatic() {
     try {
       await api('/api/login', { method: 'POST', body: JSON.stringify({ password: $('password').value }) });
       $('password').value = '';
-      showApp();
+      showApp(await api('/api/session'));
     } catch (err) { $('login-error').textContent = err.message; }
     btn.disabled = false;
   });
-  $('logout').addEventListener('click', async () => { await api('/api/logout', { method: 'POST' }).catch(() => {}); showLogin(); });
+  $('ts-button').addEventListener('click', async () => {
+    $('login-error').textContent = '';
+    try {
+      await api('/api/login', { method: 'POST', body: JSON.stringify({ tailscale: true }) });
+      showApp(await api('/api/session'));
+    } catch (err) { $('login-error').textContent = err.message; }
+  });
+  $('logout').addEventListener('click', async () => {
+    await api('/api/logout', { method: 'POST' }).catch(() => {});
+    showLogin(await api('/api/session').catch(() => ({})));
+  });
 
   const icons = {
     system: '<svg viewBox="0 0 20 20" fill="currentColor" class="size-4"><path fill-rule="evenodd" d="M2 4.25A2.25 2.25 0 0 1 4.25 2h11.5A2.25 2.25 0 0 1 18 4.25v8.5A2.25 2.25 0 0 1 15.75 15h-3.105a3.501 3.501 0 0 0 1.1 1.677A.75.75 0 0 1 13.26 18H6.74a.75.75 0 0 1-.484-1.323A3.501 3.501 0 0 0 7.355 15H4.25A2.25 2.25 0 0 1 2 12.75v-8.5Zm1.5 0a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-.75.75H4.25a.75.75 0 0 1-.75-.75v-7.5Z" clip-rule="evenodd"/></svg>',

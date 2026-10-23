@@ -244,6 +244,26 @@ recall password       # on the machine running Recall: generates a strong passwo
 recall serve          # then open http://localhost:7878 (or your tailnet address)
 ```
 
+**On a tailnet you don't need the password.** When `recall serve` runs on a
+machine that's on Tailscale, it signs you in automatically. It asks the local
+Tailscale daemon who owns the device you're connecting from: the same verified
+identity [tsidp](https://tailscale.com/docs/features/tsidp) is built on, with
+nothing extra to deploy.
+
+- **Who gets in.** Only the Tailscale user who owns the server, unless you
+  allow others with `recall tailnet allow friend@example.com`. Tagged devices
+  (servers, CI) are never signed in this way.
+- **How it's detected.** It works when Recall listens on the tailnet
+  (`recall serve --tailscale`), and also behind `tailscale serve`, where Recall
+  trusts the `Tailscale-User-Login` header only if `tailscale serve` is
+  actually proxying to Recall's port.
+- **Sessions.** A Tailscale session lasts 24 hours and renews silently while
+  you're on the tailnet. Signing out sticks for that browser session; one
+  click on "Continue with Tailscale" signs you back in.
+- **Managing it.** `recall tailnet` shows who's allowed, and
+  `recall tailnet off` turns it off. Edits made from the web app are recorded
+  in `recall audit` under the Tailscale login.
+
 - **Map.** Every memory is a dot. Memories are linked when they share a name,
   place or project, or mean similar things, and they're grouped into coloured
   topics labelled with their most central word. Hover to light up a memory's
@@ -272,7 +292,8 @@ recall serve          # then open http://localhost:7878 (or your tailnet address
 - **Size.** No framework and no CDN: one HTML file, a hand-written canvas
   graph and pre-built Tailwind CSS, all compiled into the binary. About 65 KB
   in total, and it works offline.
-- **Sign-in.** The password is stored as a PBKDF2-SHA256 hash (600,000
+- **Sign-in.** Tailscale identity on a tailnet (see above), otherwise a
+  password. The password is stored as a PBKDF2-SHA256 hash (600,000
   iterations) inside the encrypted database. Sessions are random 256-bit
   tokens in `HttpOnly`, `SameSite=Strict` cookies, and logins are limited to
   5 failures a minute. `recall password` again rotates the password and signs

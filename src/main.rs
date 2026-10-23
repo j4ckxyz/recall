@@ -26,6 +26,8 @@ USAGE:
                                       run the HTTP MCP server (default 127.0.0.1:7878;
                                       --tailscale listens on this device's tailnet IP)
   recall password [--set | --off]     generate the web UI password (--set: read yours from stdin)
+  recall tailnet [allow LOGIN | deny LOGIN | on | off]
+                                      Tailscale sign-in for the web UI (on by default on a tailnet)
   recall remote URL TOKEN             use a Recall server elsewhere (e.g. http://pi:7878/mcp)
   recall remote | remote off          show / stop using the remote server
   recall token add NAME [--read-only] create an HTTP bearer token (shown once)
@@ -83,6 +85,7 @@ fn run(args: &[String]) -> Result<()> {
             }
         },
         ["password", rest @ ..] => password(rest)?,
+        ["tailnet", rest @ ..] => tailnet(rest)?,
         ["remote"] => match Remote::load()? {
             Some(r) => println!("Using remote server {}", r.url()),
             None => println!("Using the local store (no remote configured)."),
@@ -250,7 +253,19 @@ fn serve(args: &[&str]) -> Result<()> {
     if !listen.ip().is_loopback() && !tailnet {
         eprintln!("recall: WARNING listening on a non-loopback, non-tailnet address; traffic is unencrypted. Prefer --tailscale.");
     }
-    http::serve(Server::new(store, Scope::Read), http::Options { listen, allow_origins })
+    let tailnet = recall::tailnet::detect(listen.port());
+    match &tailnet {
+        Some(_) if store.setting(recall::web::TAILNET_KEY)?.as_deref() == Some("off") => {
+            eprintln!("recall: on a tailnet, but Tailscale sign-in is off (`recall tailnet on`)");
+        }
+        Some(t) => eprintln!(
+            "recall: Tailscale sign-in on for {}{}",
+            t.owner.as_deref().unwrap_or("allow-listed users (this device is tagged)"),
+            if t.behind_serve { ", via tailscale serve" } else { "" }
+        ),
+        None => eprintln!("recall: Tailscale not detected; web UI uses password sign-in"),
+    }
+    http::serve(Server::new(store, Scope::Read), http::Options { listen, allow_origins, tailnet })
 }
 
 fn export(s: &Store, as_json: bool) -> Result<()> {
@@ -366,6 +381,45 @@ fn password(args: &[&str]) -> Result<()> {
             println!("{pw}\n\nWeb UI password (shown once). Open the server's address in a browser, e.g. http://localhost:7878/");
         }
         _ => return Err("usage: recall password [--set | --off]".into()),
+    }
+    Ok(())
+}
+
+/// Tailscale sign-in: by default the owner of this tailnet device; allow
+/// others by login.
+fn tailnet(args: &[&str]) -> Result<()> {
+    use recall::web::{TAILNET_ALLOW_KEY, TAILNET_KEY};
+    let store = open()?;
+    let mut allowed: Vec<String> = store.setting(TAILNET_ALLOW_KEY)?.unwrap_or_default().lines().map(String::from).collect();
+    match args {
+        ["on"] => store.set_setting(TAILNET_KEY, None)?,
+        ["off"] => store.set_setting(TAILNET_KEY, Some("off"))?,
+        ["allow", login] => {
+            if !allowed.iter().any(|a| a.eq_ignore_ascii_case(login)) {
+                allowed.push(login.to_string());
+            }
+            store.set_setting(TAILNET_ALLOW_KEY, Some(&allowed.join("\n")))?;
+        }
+        ["deny", login] => {
+            allowed.retain(|a| !a.eq_ignore_ascii_case(login));
+            let joined = allowed.join("\n");
+            store.set_setting(TAILNET_ALLOW_KEY, Some(joined.as_str()).filter(|s| !s.is_empty()))?;
+            store.session_remove(None)?;
+        }
+        [] => {}
+        _ => return Err("usage: recall tailnet [allow LOGIN | deny LOGIN | on | off]".into()),
+    }
+    let on = store.setting(TAILNET_KEY)?.as_deref() != Some("off");
+    let info = recall::tailnet::detect(0);
+    println!("Tailscale sign-in: {}", if on { "on" } else { "off" });
+    match info.as_ref().map(|i| i.owner.as_deref()) {
+        Some(Some(owner)) => println!("Tailscale: running; this device belongs to {owner} (always allowed)"),
+        Some(None) => println!("Tailscale: running; this device is tagged, so only allow-listed users get in"),
+        None => println!("Tailscale: not detected here"),
+    }
+    let allowed: Vec<String> = store.setting(TAILNET_ALLOW_KEY)?.unwrap_or_default().lines().map(String::from).collect();
+    if !allowed.is_empty() {
+        println!("Also allowed: {}", allowed.join(", "));
     }
     Ok(())
 }

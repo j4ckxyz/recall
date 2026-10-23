@@ -9,6 +9,7 @@ use tiny_http::{Header, Request, Response, Server as Http};
 
 use crate::Result;
 use crate::mcp::Server;
+use crate::tailnet::{self, Identity};
 use crate::web::{self, Reply};
 
 const MAX_BODY: u64 = 64 * 1024;
@@ -24,6 +25,8 @@ pub struct Options {
     pub listen: SocketAddr,
     /// Extra browser origins allowed to call (same-origin is always allowed).
     pub allow_origins: Vec<String>,
+    /// Set when this machine is on a tailnet: enables Tailscale sign-in.
+    pub tailnet: Option<tailnet::Info>,
 }
 
 pub fn serve(mut server: Server, opts: Options) -> Result<()> {
@@ -41,7 +44,7 @@ pub fn serve(mut server: Server, opts: Options) -> Result<()> {
 /// DNS-rebinding defence: only answer to names that can legitimately reach
 /// this server — loopback names on loopback, otherwise the bound IP,
 /// tailnet (`*.ts.net`) and single-label (MagicDNS/LAN) names.
-fn host_allowed(host: &str, listen: &SocketAddr) -> bool {
+fn host_allowed(host: &str, listen: &SocketAddr, behind_serve: bool) -> bool {
     let name = match host.strip_prefix('[') {
         Some(v6) => v6.split(']').next().unwrap_or(""),
         None => host.rsplit_once(':').map_or(host, |(h, _)| h),
@@ -49,7 +52,8 @@ fn host_allowed(host: &str, listen: &SocketAddr) -> bool {
     .to_ascii_lowercase();
     let loopback = matches!(name.as_str(), "localhost" | "127.0.0.1" | "::1");
     if listen.ip().is_loopback() {
-        return loopback;
+        // `tailscale serve` forwards the browser's own Host (name.tailnet.ts.net).
+        return loopback || (behind_serve && name.ends_with(".ts.net"));
     }
     if let Ok(ip) = name.parse::<IpAddr>() {
         return listen.ip().is_unspecified() || ip == listen.ip() || ip.is_loopback();
@@ -67,9 +71,11 @@ fn handle(server: &mut Server, guard: &mut web::Guard, opts: &Options, mut req: 
     let url = req.url().to_string();
     let (path, query) = url.split_once('?').unwrap_or((&url, ""));
     let method = req.method().as_str().to_string();
+    let peer = req.remote_addr().copied();
 
     let host = header("host").unwrap_or_default();
-    if !host_allowed(&host, &opts.listen) {
+    let behind_serve = opts.tailnet.as_ref().is_some_and(|t| t.behind_serve);
+    if !host_allowed(&host, &opts.listen, behind_serve) {
         return respond(req, Reply::json(403, serde_json::json!({ "error": "forbidden host" })));
     }
     if let Some(origin) = header("origin")
@@ -94,6 +100,11 @@ fn handle(server: &mut Server, guard: &mut web::Guard, opts: &Options, mut req: 
         ("GET", "/icon.png") => asset("image/png", web::ICON_PNG),
         (_, p) if p.starts_with("/api/") => {
             let cookie = header("cookie");
+            // Only sign-in requests need to know who is connecting.
+            let tailnet = match (&opts.tailnet, path) {
+                (Some(info), "/api/session" | "/api/login") => identify(info, peer, &header),
+                _ => None,
+            };
             let request = web::Request {
                 method: &method,
                 path,
@@ -101,6 +112,9 @@ fn handle(server: &mut Server, guard: &mut web::Guard, opts: &Options, mut req: 
                 body: &body,
                 cookie: cookie.as_deref().and_then(web::session_cookie),
                 ajax: header("x-requested-with").as_deref() == Some("recall"),
+                tailnet,
+                owner: opts.tailnet.as_ref().and_then(|t| t.owner.as_deref()),
+                signed_out: cookie.as_deref().is_some_and(web::signed_out),
             };
             let mut r = web::api(&server.store, guard, &request);
             r.headers.push(("Cache-Control", "no-store".into()));
@@ -109,6 +123,22 @@ fn handle(server: &mut Server, guard: &mut web::Guard, opts: &Options, mut req: 
         _ => Reply { status: 404, content_type: "text/plain", body: b"not found".to_vec(), headers: Vec::new() },
     };
     respond(req, reply)
+}
+
+/// The tailnet user behind a request: asked of the Tailscale daemon for
+/// direct tailnet connections, or taken from the identity headers that
+/// `tailscale serve` sets (and strips from clients) when it proxies to us.
+fn identify(info: &tailnet::Info, peer: Option<SocketAddr>, header: &impl Fn(&str) -> Option<String>) -> Option<Identity> {
+    let peer = peer?;
+    if tailnet::is_tailnet_ip(peer.ip()) {
+        return tailnet::whois(peer);
+    }
+    if peer.ip().is_loopback() && info.behind_serve {
+        let login = header("tailscale-user-login").filter(|l| !l.is_empty())?;
+        let name = header("tailscale-user-name").unwrap_or_else(|| login.clone());
+        return Some(Identity { login, name, tagged: false });
+    }
+    None
 }
 
 fn asset(content_type: &'static str, body: &[u8]) -> Reply {
@@ -165,12 +195,15 @@ mod tests {
     fn hosts() {
         let lo: SocketAddr = "127.0.0.1:7878".parse().unwrap();
         let ts: SocketAddr = "100.101.102.103:7879".parse().unwrap();
-        assert!(host_allowed("localhost:7878", &lo));
-        assert!(!host_allowed("evil.example:7878", &lo));
-        assert!(host_allowed("pi5.bandicoot-nominal.ts.net:7879", &ts));
-        assert!(host_allowed("pi5:7879", &ts));
-        assert!(host_allowed("100.101.102.103:7879", &ts));
-        assert!(!host_allowed("evil.example:7879", &ts));
-        assert!(!host_allowed("1.2.3.4:7879", &ts));
+        assert!(host_allowed("localhost:7878", &lo, false));
+        assert!(!host_allowed("evil.example:7878", &lo, false));
+        assert!(!host_allowed("pi5.bandicoot-nominal.ts.net", &lo, false));
+        assert!(host_allowed("pi5.bandicoot-nominal.ts.net", &lo, true));
+        assert!(!host_allowed("evil.example", &lo, true));
+        assert!(host_allowed("pi5.bandicoot-nominal.ts.net:7879", &ts, false));
+        assert!(host_allowed("pi5:7879", &ts, false));
+        assert!(host_allowed("100.101.102.103:7879", &ts, false));
+        assert!(!host_allowed("evil.example:7879", &ts, false));
+        assert!(!host_allowed("1.2.3.4:7879", &ts, false));
     }
 }
