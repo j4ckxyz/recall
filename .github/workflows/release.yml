@@ -320,6 +320,13 @@ jobs:
           & "$env:LOCALAPPDATA\Programs\recall\recall.exe" --version
       - name: Listed in the MCP Registry
         if: runner.os == 'Linux' && runner.arch == 'X64'
+        # The registry's search index updates a little after publishing.
         run: |
-          curl -fsSL "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.j4ckxyz/recall" \
-            | jq -e --arg v "${{ needs.plan.outputs.version }}" '[.servers[] | (.server // .) | select(.name == "io.github.j4ckxyz/recall" and .version == $v)] | length > 0'
+          for i in $(seq 1 18); do
+            if curl -fsSL "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.j4ckxyz/recall" \
+              | jq -e --arg v "${{ needs.plan.outputs.version }}" '[.servers[] | (.server // .) | select(.name == "io.github.j4ckxyz/recall" and .version == $v)] | length > 0' >/dev/null; then
+              echo "listed"; exit 0
+            fi
+            sleep 10
+          done
+          echo "version not listed after 3 minutes"; exit 1
