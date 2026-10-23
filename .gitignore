@@ -1,2 +1,4 @@
 /target
 /bench/models
+/tools
+.claude/launch.json

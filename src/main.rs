@@ -25,6 +25,7 @@ USAGE:
   recall serve [--tailscale | --listen ADDR] [--port N] [--allow-origin ORIGIN]...
                                       run the HTTP MCP server (default 127.0.0.1:7878;
                                       --tailscale listens on this device's tailnet IP)
+  recall password [--set | --off]     generate the web UI password (--set: read yours from stdin)
   recall remote URL TOKEN             use a Recall server elsewhere (e.g. http://pi:7878/mcp)
   recall remote | remote off          show / stop using the remote server
   recall token add NAME [--read-only] create an HTTP bearer token (shown once)
@@ -81,6 +82,7 @@ fn run(args: &[String]) -> Result<()> {
                 stdio(Server::new(store, Scope::Write))?
             }
         },
+        ["password", rest @ ..] => password(rest)?,
         ["remote"] => match Remote::load()? {
             Some(r) => println!("Using remote server {}", r.url()),
             None => println!("Using the local store (no remote configured)."),
@@ -239,7 +241,10 @@ fn serve(args: &[&str]) -> Result<()> {
     }
     let store = open()?;
     if store.token_list()?.is_empty() {
-        eprintln!("recall: no tokens yet; create one with `recall token add NAME`");
+        eprintln!("recall: no MCP tokens yet; create one with `recall token add NAME`");
+    }
+    if store.setting(recall::web::PASSWORD_KEY)?.is_none() {
+        eprintln!("recall: no web UI password yet; create one with `recall password`");
     }
     let tailnet = matches!(listen.ip(), std::net::IpAddr::V4(ip) if ip.octets()[0] == 100 && (64..128).contains(&ip.octets()[1]));
     if !listen.ip().is_loopback() && !tailnet {
@@ -331,4 +336,36 @@ fn connect(which: &[&str], add: bool) -> Result<()> {
         println!("\nRestart open agents to pick up the change.");
     }
     if failed { Err("some agents could not be updated".into()) } else { Ok(()) }
+}
+
+/// Set the web UI password. Changing it signs out every browser.
+fn password(args: &[&str]) -> Result<()> {
+    use recall::{auth, web::PASSWORD_KEY};
+    let store = open()?;
+    match args {
+        ["--off"] => {
+            store.set_setting(PASSWORD_KEY, None)?;
+            store.session_remove(None)?;
+            println!("Web UI sign-in disabled.");
+        }
+        ["--set"] => {
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line)?;
+            let pw = line.trim_end_matches(['\r', '\n']);
+            if pw.chars().count() < 12 {
+                return Err("use at least 12 characters".into());
+            }
+            store.set_setting(PASSWORD_KEY, Some(&auth::hash_password(pw, auth::ITERATIONS)?))?;
+            store.session_remove(None)?;
+            println!("Web UI password set.");
+        }
+        [] => {
+            let pw = auth::generate_password()?;
+            store.set_setting(PASSWORD_KEY, Some(&auth::hash_password(&pw, auth::ITERATIONS)?))?;
+            store.session_remove(None)?;
+            println!("{pw}\n\nWeb UI password (shown once). Open the server's address in a browser, e.g. http://localhost:7878/");
+        }
+        _ => return Err("usage: recall password [--set | --off]".into()),
+    }
+    Ok(())
 }

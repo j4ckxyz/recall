@@ -1,0 +1,13 @@
+/* Source for web/app.css. Rebuild with: ./web/build.sh */
+@import "tailwindcss" source(none);
+@source "./index.html";
+@source "./app.js";
+
+/* Theme follows the `dark` class that app.js sets from the saved choice or the OS. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root { color-scheme: light; }
+  :root.dark { color-scheme: dark; }
+  dialog::backdrop { background: rgb(2 6 23 / 0.4); }
+}

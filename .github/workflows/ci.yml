@@ -23,3 +23,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy -p recall --all-targets ${{ matrix.features }} -- -D warnings
       - run: cargo test -p recall ${{ matrix.features }}
+
+  web-css:
+    # web/app.css is committed (no Node at build time); make sure it matches
+    # the Tailwind classes actually used in web/index.html and web/app.js.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o tailwindcss https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/tailwindcss-linux-x64
+          chmod +x tailwindcss
+          TAILWIND=$PWD/tailwindcss ./web/build.sh
+          git diff --exit-code web/app.css || (echo "web/app.css is stale: run ./web/build.sh" && exit 1)
+      - run: node --check web/app.js

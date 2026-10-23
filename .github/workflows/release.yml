@@ -57,7 +57,7 @@ jobs:
           if [ "$EVENT" = push ] && [ "$REF" = refs/heads/main ]; then
             if [ -z "$last" ]; then
               release=true
-            elif git diff --name-only "v$last" HEAD | grep -qE '^(src/|models/|mcpb/|Cargo\.(toml|lock)$|install\.(sh|ps1)$|server\.json$)'; then
+            elif git diff --name-only "v$last" HEAD | grep -qE '^(src/|web/|models/|mcpb/|Cargo\.(toml|lock)$|install\.(sh|ps1)$|server\.json$)'; then
               release=true
             fi
             case "$MESSAGE" in *"[skip release]"*) release=false ;; esac

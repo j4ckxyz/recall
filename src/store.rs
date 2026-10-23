@@ -106,6 +106,8 @@ CREATE TABLE IF NOT EXISTS audit(
 CREATE TABLE IF NOT EXISTS tokens(
   name TEXT PRIMARY KEY, hash BLOB NOT NULL UNIQUE, scope TEXT NOT NULL, created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sessions(hash BLOB PRIMARY KEY, expires INTEGER NOT NULL);
 PRAGMA user_version = 1;
 ";
 
@@ -535,6 +537,237 @@ impl Store {
                 Ok((r.get(0)?, if scope == "write" { Scope::Write } else { Scope::Read }))
             })
             .optional()?)
+    }
+}
+
+/// A memory as the web UI shows it.
+#[derive(Debug, Clone)]
+pub struct Entry {
+    pub memory: Memory,
+    pub uses: i64,
+}
+
+/// Similarity map for the web UI: nodes are indexes into `entries`.
+pub struct Graph {
+    pub entries: Vec<Entry>,
+    /// (a, b, cosine), a < b.
+    pub edges: Vec<(usize, usize, f32)>,
+    /// Cluster id per node, and a label per cluster.
+    pub cluster: Vec<usize>,
+    pub labels: Vec<String>,
+}
+
+/// Link score at or above which two memories are linked on the map.
+pub const EDGE_MIN: f32 = 0.25;
+/// Words too generic to name a cluster.
+const GENERIC: &[&str] = &["prefers", "prefer", "likes", "loves", "uses", "wants", "favourite", "every", "always", "rather", "main", "named", "called", "keeps"];
+
+impl Store {
+    // ---- settings + web sessions -------------------------------------------
+
+    pub fn setting(&self, key: &str) -> Result<Option<String>> {
+        Ok(self.conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional()?)
+    }
+
+    pub fn set_setting(&self, key: &str, value: Option<&str>) -> Result<()> {
+        match value {
+            Some(v) => self.conn.execute("INSERT OR REPLACE INTO settings(key, value) VALUES (?1, ?2)", params![key, v])?,
+            None => self.conn.execute("DELETE FROM settings WHERE key = ?1", [key])?,
+        };
+        Ok(())
+    }
+
+    pub fn session_add(&self, hash: &[u8], expires: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM sessions WHERE expires < ?1", [now()])?;
+        self.conn.execute("INSERT INTO sessions(hash, expires) VALUES (?1, ?2)", params![hash, expires])?;
+        Ok(())
+    }
+
+    pub fn session_valid(&self, hash: &[u8]) -> Result<bool> {
+        Ok(self
+            .conn
+            .prepare_cached("SELECT EXISTS(SELECT 1 FROM sessions WHERE hash = ?1 AND expires > ?2)")?
+            .query_row(params![hash, now()], |r| r.get(0))?)
+    }
+
+    pub fn session_remove(&self, hash: Option<&[u8]>) -> Result<()> {
+        match hash {
+            Some(h) => self.conn.execute("DELETE FROM sessions WHERE hash = ?1", [h])?,
+            None => self.conn.execute("DELETE FROM sessions", [])?,
+        };
+        Ok(())
+    }
+
+    // ---- web views ---------------------------------------------------------
+
+    /// Active memories with usage counts, most-used first.
+    pub fn entries(&self) -> Result<Vec<Entry>> {
+        let mut stmt = self.conn.prepare_cached(&format!(
+            "SELECT {COLS}, use_count FROM memories WHERE deleted_at IS NULL ORDER BY use_count DESC, at DESC, id DESC"
+        ))?;
+        let rows = stmt.query_map([], |r| Ok(Entry { memory: row_to_memory(r)?, uses: r.get(3)? }))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Build the memory map. Two signals link memories, as in a notes graph:
+    /// shared rare words (names, places, projects; IDF-weighted, like
+    /// backlinks) and meaning (cosine of mean-centred embeddings, which
+    /// removes the "User…" direction every memory shares). Each memory keeps
+    /// its 3 strongest links, more if very strong; clusters come from label
+    /// propagation. Capped at `max_nodes` most-used memories.
+    pub fn graph(&self, max_nodes: usize) -> Result<Graph> {
+        let mut entries = self.entries()?;
+        entries.truncate(max_nodes);
+        let n = entries.len();
+        let mut vecs: Vec<Option<Vec<f32>>> = {
+            let mut stmt = self.conn.prepare_cached("SELECT vec FROM memories WHERE sid = ?1")?;
+            entries
+                .iter()
+                .map(|e| stmt.query_row([&e.memory.sid], |r| r.get::<_, Option<Vec<u8>>>(0)).map(|v| v.map(|b| embed::from_bytes(&b))))
+                .collect::<std::result::Result<_, _>>()?
+        };
+        if let Some(dim) = vecs.iter().flatten().next().map(Vec::len) {
+            let mut mean = vec![0f32; dim];
+            let present = vecs.iter().flatten().count() as f32;
+            vecs.iter().flatten().for_each(|v| mean.iter_mut().zip(v).for_each(|(m, x)| *m += x / present));
+            for v in vecs.iter_mut().flatten() {
+                v.iter_mut().zip(&mean).for_each(|(x, m)| *x -= m);
+                let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-6);
+                v.iter_mut().for_each(|x| *x /= norm);
+            }
+        }
+
+        // Lexical links via an inverted index over words shared by 2+ memories.
+        let doc_words: Vec<Vec<String>> = entries.iter().map(|e| words(&e.memory.content)).collect();
+        let mut postings: HashMap<&str, Vec<usize>> = HashMap::new();
+        for (i, ws) in doc_words.iter().enumerate() {
+            ws.iter().for_each(|w| postings.entry(w.as_str()).or_default().push(i));
+        }
+        let idf = |df: usize| (n as f32 / df as f32).ln();
+        let mut lexical: HashMap<(usize, usize), f32> = HashMap::new();
+        for docs in postings.values().filter(|d| d.len() > 1 && d.len() * 5 < n.max(10) * 2) {
+            let w = idf(docs.len());
+            for (x, &i) in docs.iter().enumerate() {
+                for &j in &docs[x + 1..] {
+                    *lexical.entry((i, j)).or_default() += w;
+                }
+            }
+        }
+
+        let mut best: Vec<Vec<(usize, f32)>> = vec![Vec::new(); n];
+        for i in 0..n {
+            for j in i + 1..n {
+                let semantic = match (&vecs[i], &vecs[j]) {
+                    (Some(a), Some(b)) => (embed::dot(a, b) / 0.45).clamp(0.0, 1.0),
+                    _ => 0.0,
+                };
+                let lex = lexical.get(&(i, j)).map_or(0.0, |w| (w / 5.0).min(1.0));
+                let score = 0.55 * semantic + 0.45 * lex;
+                if score >= EDGE_MIN {
+                    best[i].push((j, score));
+                    best[j].push((i, score));
+                }
+            }
+        }
+        let mut edges = std::collections::BTreeMap::new();
+        for (i, list) in best.iter_mut().enumerate() {
+            list.sort_by(|x, y| y.1.total_cmp(&x.1));
+            for (rank, &(j, score)) in list.iter().enumerate().take(5) {
+                if rank < 3 || score >= 0.6 {
+                    edges.insert((i.min(j), i.max(j)), score);
+                }
+            }
+        }
+        let edges: Vec<(usize, usize, f32)> = edges.into_iter().map(|((a, b), c)| (a, b, c)).collect();
+
+        // Weighted label propagation, deterministic order.
+        let mut adj: Vec<Vec<(usize, f32)>> = vec![Vec::new(); n];
+        for &(a, b, c) in &edges {
+            adj[a].push((b, c));
+            adj[b].push((a, c));
+        }
+        let mut label: Vec<usize> = (0..n).collect();
+        for _ in 0..20 {
+            let mut changed = false;
+            for i in 0..n {
+                let mut weight: HashMap<usize, f32> = HashMap::new();
+                for &(j, c) in &adj[i] {
+                    *weight.entry(label[j]).or_default() += c;
+                }
+                if let Some((&l, _)) = weight.iter().max_by(|a, b| a.1.total_cmp(b.1).then(b.0.cmp(a.0)))
+                    && l != label[i]
+                {
+                    label[i] = l;
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        // Fold clusters of 1-2 memories into their most strongly linked neighbour.
+        for _ in 0..3 {
+            let mut sizes: HashMap<usize, usize> = HashMap::new();
+            label.iter().for_each(|l| *sizes.entry(*l).or_default() += 1);
+            let mut moved = false;
+            for i in 0..n {
+                if sizes[&label[i]] >= 3 {
+                    continue;
+                }
+                let mut weight: HashMap<usize, f32> = HashMap::new();
+                for &(j, c) in &adj[i] {
+                    if sizes[&label[j]] >= 3 {
+                        *weight.entry(label[j]).or_default() += c;
+                    }
+                }
+                if let Some((&l, _)) = weight.iter().max_by(|a, b| a.1.total_cmp(b.1).then(b.0.cmp(a.0))) {
+                    label[i] = l;
+                    moved = true;
+                }
+            }
+            if !moved {
+                break;
+            }
+        }
+
+        // Renumber clusters by size; name each by its most distinctive word.
+        let mut sizes: HashMap<usize, usize> = HashMap::new();
+        label.iter().for_each(|l| *sizes.entry(*l).or_default() += 1);
+        let mut order: Vec<(usize, usize)> = sizes.into_iter().collect();
+        order.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let rank: HashMap<usize, usize> = order.iter().enumerate().map(|(r, (l, _))| (*l, r)).collect();
+        let cluster: Vec<usize> = label.iter().map(|l| rank[l]).collect();
+        let mut labels = Vec::with_capacity(order.len());
+        for r in 0..order.len() {
+            let members: Vec<usize> = (0..n).filter(|&i| cluster[i] == r).collect();
+            let mut count: HashMap<&str, usize> = HashMap::new();
+            for &i in &members {
+                for w in doc_words[i].iter().filter(|w| w.len() > 3 && !w.chars().all(|c| c.is_ascii_digit()) && !GENERIC.contains(&w.as_str())) {
+                    *count.entry(w.as_str()).or_default() += 1;
+                }
+            }
+            // The word whose meaning sits closest to the cluster's centre names it;
+            // without a model, fall back to the most frequent distinctive word.
+            let centre: Option<Vec<f32>> = self.embedder.map(|e| {
+                let mut c = vec![0f32; e.dim()];
+                for &i in &members {
+                    c.iter_mut().zip(e.embed(&doc_words[i].join(" "))).for_each(|(a, b)| *a += b);
+                }
+                c
+            });
+            let score = |w: &str, k: usize| match (self.embedder, &centre) {
+                (Some(e), Some(c)) => embed::dot(&e.embed(w), c) / members.len() as f32 + 0.05 * k as f32,
+                _ => k as f32 * idf(postings[w].len()).max(0.1),
+            };
+            let top = count
+                .iter()
+                .map(|(w, k)| (*w, score(w, *k)))
+                .max_by(|a, b| a.1.total_cmp(&b.1).then(b.0.cmp(a.0)))
+                .map(|(w, _)| w.to_string())
+                .unwrap_or_default();
+            labels.push(top);
+        }
+        Ok(Graph { entries, edges, cluster, labels })
     }
 }
 

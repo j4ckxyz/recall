@@ -2,6 +2,8 @@
 
 A self-hosted memory of *you*, shared by every AI agent you use, over MCP.
 
+![Recall's memory map: memories as dots, grouped into coloured topic clusters](docs/screenshots/map-dark.png)
+
 - **One binary, 10 MB**, embedding model included. No Python, no GPU, no
   network at runtime. ~13 MB RAM per agent connection. Runs on a Raspberry Pi.
 - **Three tools**: `recall`, `remember`, `forget`. Agents get facts and dates,
@@ -12,13 +14,15 @@ A self-hosted memory of *you*, shared by every AI agent you use, over MCP.
 - **Secure by default**: SQLCipher-encrypted store, secret scanner on every
   write, soft deletes with an audit trail, stdio-only unless you opt into HTTP
   with scoped tokens.
+- **A map of your memory**: a password-protected web app, built into the same
+  binary at about 65 KB, to browse, search, edit and forget memories.
 
 ```bash
 curl -fsSL https://github.com/j4ckxyz/recall/releases/latest/download/install.sh | sh
 ```
 
 [Install](#install) · [Let an agent install it](#or-let-an-agent-do-it) ·
-[Use it across devices](#use-it-across-devices-with-tailscale) · [Design](docs/PROTOCOL.md) ·
+[Use it across devices](#use-it-across-devices-with-tailscale) · [Web app](#see-your-memory) · [Design](docs/PROTOCOL.md) ·
 [Benchmarks](bench/README.md)
 
 ## Why not just use ChatGPT or Claude memory?
@@ -230,6 +234,61 @@ Clients that only accept a URL can use the server directly, with
 Web and mobile apps such as claude.ai and ChatGPT can't reach a private tailnet
 yet.
 
+## See your memory
+
+`recall serve` also hosts a small web app, like Obsidian's graph view for what
+your agents know about you.
+
+```bash
+recall password       # on the machine running Recall: generates a strong password (shown once)
+recall serve          # then open http://localhost:7878 (or your tailnet address)
+```
+
+- **Map.** Every memory is a dot. Memories are linked when they share a name,
+  place or project, or mean similar things, and they're grouped into coloured
+  topics labelled with their most central word. Hover to light up a memory's
+  links; scroll to zoom; drag to pan or rearrange.
+- **Search.** Results appear as you type, with the same fuzzy and semantic
+  search agents use: "family" finds your mother and your daughter, and
+  "vegitarian" still finds "vegetarian".
+- **Edit and forget.** Change a memory's text, add a new one with the date it
+  was true, or forget one. Every change is reversible for 30 days with
+  `recall restore`.
+- **Keyboard:** `/` or `⌘K` to search, `n` to add a memory, `Esc` to clear.
+- **Themes:** light, dark, or follow the system. The choice is remembered.
+
+![Selecting a memory shows its linked memories and when it was learned](docs/screenshots/detail-light.png)
+
+![Semantic search: "family" finds memories about mother and daughter](docs/screenshots/search-light.png)
+
+<p align="center">
+  <img src="docs/screenshots/login-dark.png" alt="Password sign-in" width="58%">
+  &nbsp;
+  <img src="docs/screenshots/mobile-light.png" alt="The memory map on a phone" width="22%">
+</p>
+
+**How it stays small and safe**
+
+- **Size.** No framework and no CDN: one HTML file, a hand-written canvas
+  graph and pre-built Tailwind CSS, all compiled into the binary. About 65 KB
+  in total, and it works offline.
+- **Sign-in.** The password is stored as a PBKDF2-SHA256 hash (600,000
+  iterations) inside the encrypted database. Sessions are random 256-bit
+  tokens in `HttpOnly`, `SameSite=Strict` cookies, and logins are limited to
+  5 failures a minute. `recall password` again rotates the password and signs
+  out every browser; `recall password --set` uses your own;
+  `recall password --off` turns the web app off.
+- **Browser protections.**
+  - A strict Content-Security-Policy, with no inline scripts.
+  - Memory text is always rendered as text, never as HTML, so a memory can't
+    inject a script.
+  - Writes need a custom header that other sites can't send, which blocks
+    cross-site request forgery.
+  - Requests are only answered under your own host names (localhost, your
+    tailnet `*.ts.net` name, or the bound IP), which blocks DNS rebinding.
+- **Screenshot data.** The screenshots use the fictional benchmark persona,
+  not real memories.
+
 ## What agents see
 
 ```
@@ -264,6 +323,11 @@ recall import chatgpt-memories.txt   # one fact per line, or a JSON export
 cargo test --workspace
 cargo run --release -p recall-bench -- run bench/models/potion-base-8M
 ```
+
+The web app's CSS is pre-built with the
+[Tailwind standalone CLI](https://github.com/tailwindlabs/tailwindcss/releases)
+(no Node needed). After changing classes in `web/`, run `./web/build.sh`; CI
+fails if `web/app.css` is stale.
 
 ### Releases are automatic
 
