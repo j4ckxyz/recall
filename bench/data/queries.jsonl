@@ -1,0 +1,124 @@
+{"type": "k", "query": "user's name", "gold": ["f01"]}
+{"type": "p", "query": "birthday", "gold": ["f02"]}
+{"type": "k", "query": "where does the user live", "gold": ["f03"]}
+{"type": "p", "query": "languages spoken", "gold": ["f05"]}
+{"type": "p", "query": "job title and employer", "gold": ["f07"]}
+{"type": "k", "query": "manager", "gold": ["f09"]}
+{"type": "k", "query": "programming languages used at work", "gold": ["f10"]}
+{"type": "p", "query": "cloud infrastructure at work", "gold": ["f11"]}
+{"type": "k", "query": "working hours", "gold": ["f12"]}
+{"type": "k", "query": "meeting schedule", "gold": ["f13"]}
+{"type": "k", "query": "Rust migration deadline", "gold": ["f14"]}
+{"type": "k", "query": "previous employer", "gold": ["f15"]}
+{"type": "k", "query": "university education", "gold": ["f16"]}
+{"type": "k", "query": "side project", "gold": ["f17"]}
+{"type": "k", "query": "Tidepool tech stack", "gold": ["f17", "f18"]}
+{"type": "k", "query": "book draft deadline", "gold": ["f19"]}
+{"type": "k", "query": "conference talk", "gold": ["f20"]}
+{"type": "k", "query": "text editor", "gold": ["f21"]}
+{"type": "k", "query": "colour theme", "gold": ["f22"]}
+{"type": "p", "query": "code review style", "gold": ["f23"]}
+{"type": "k", "query": "ORM or raw SQL", "gold": ["f24"]}
+{"type": "k", "query": "javascript package manager", "gold": ["f25"]}
+{"type": "k", "query": "testing expectations", "gold": ["f26"]}
+{"type": "k", "query": "spelling conventions", "gold": ["f27"]}
+{"type": "p", "query": "response length and tone", "gold": ["f28", "f70"]}
+{"type": "k", "query": "code examples format", "gold": ["f29"]}
+{"type": "k", "query": "SaaS vs self-hosted recommendations", "gold": ["f30", "f74"]}
+{"type": "k", "query": "keyboard layout", "gold": ["f31"]}
+{"type": "p", "query": "computer hardware", "gold": ["f32"]}
+{"type": "p", "query": "dietary restrictions", "gold": ["f33", "f34", "f36", "f77"]}
+{"type": "p", "query": "allergies", "gold": ["f34"]}
+{"type": "p", "query": "favourite cuisine", "gold": ["f35"]}
+{"type": "k", "query": "alcohol", "gold": ["f36"]}
+{"type": "k", "query": "coffee order", "gold": ["f37"]}
+{"type": "k", "query": "partner", "gold": ["f38"]}
+{"type": "k", "query": "anniversary date", "gold": ["f39"]}
+{"type": "p", "query": "children", "gold": ["f40"]}
+{"type": "p", "query": "pet", "gold": ["f41"]}
+{"type": "k", "query": "mother", "gold": ["f42"]}
+{"type": "p", "query": "siblings", "gold": ["f43"]}
+{"type": "k", "query": "best friend", "gold": ["f44"]}
+{"type": "p", "query": "exercise routine", "gold": ["f45"]}
+{"type": "p", "query": "musical instrument", "gold": ["f46"]}
+{"type": "k", "query": "surfing", "gold": ["f47"]}
+{"type": "k", "query": "favourite authors", "gold": ["f48"]}
+{"type": "k", "query": "chess rating", "gold": ["f49"]}
+{"type": "p", "query": "gardening", "gold": ["f50"]}
+{"type": "p", "query": "train or plane", "gold": ["f51", "f53"]}
+{"type": "p", "query": "upcoming travel", "gold": ["f52"]}
+{"type": "k", "query": "seat preference when flying", "gold": ["f53"]}
+{"type": "k", "query": "accommodation when travelling", "gold": ["f54"]}
+{"type": "k", "query": "podcasts", "gold": ["f55"]}
+{"type": "k", "query": "e-reader", "gold": ["f56"]}
+{"type": "p", "query": "contact preference", "gold": ["f57"]}
+{"type": "k", "query": "email provider", "gold": ["f58"]}
+{"type": "k", "query": "weekly planning routine", "gold": ["f59", "f13"]}
+{"type": "k", "query": "sleep schedule", "gold": ["f60"]}
+{"type": "p", "query": "transport", "gold": ["f61"]}
+{"type": "p", "query": "favourite movie", "gold": ["f63"]}
+{"type": "p", "query": "music taste", "gold": ["f64"]}
+{"type": "k", "query": "pronouns", "gold": ["f69"]}
+{"type": "p", "query": "on-call rotation", "gold": ["f66"]}
+{"type": "k", "query": "issue tracking", "gold": ["f67"]}
+{"type": "k", "query": "performance review", "gold": ["f68"]}
+{"type": "k", "query": "mentoring", "gold": ["f79"]}
+{"type": "k", "query": "volunteering", "gold": ["f72"]}
+{"type": "k", "query": "units and time format", "gold": ["f75"]}
+{"type": "k", "query": "timezone", "gold": ["f76", "f03"]}
+{"type": "k", "query": "document format", "gold": ["f78"]}
+{"type": "p", "query": "childcare", "gold": ["f71", "f40"]}
+{"type": "k", "query": "hosting provider for personal projects", "gold": ["f74"]}
+{"type": "p", "query": "privacy and big tech", "gold": ["f73"]}
+{"type": "k", "query": "Christmas plans", "gold": ["f80"]}
+{"type": "p", "query": "date of birth", "gold": ["f02"]}
+{"type": "p", "query": "hometown", "gold": ["f04"]}
+{"type": "p", "query": "passport nationality", "gold": ["f06"]}
+{"type": "p", "query": "how big is their team", "gold": ["f08"]}
+{"type": "p", "query": "who do they report to", "gold": ["f09"]}
+{"type": "p", "query": "where did they go to college", "gold": ["f16"]}
+{"type": "p", "query": "what do they eat", "gold": ["f33", "f34", "f35", "f77"]}
+{"type": "p", "query": "significant other", "gold": ["f38"]}
+{"type": "p", "query": "kid", "gold": ["f40", "f71"]}
+{"type": "p", "query": "dog", "gold": ["f41"]}
+{"type": "p", "query": "hobbies", "gold": ["f45", "f46", "f47", "f48", "f49", "f50"]}
+{"type": "p", "query": "family members", "gold": ["f38", "f40", "f42", "f43"]}
+{"type": "p", "query": "IDE", "gold": ["f21"]}
+{"type": "p", "query": "bedtime", "gold": ["f60"]}
+{"type": "p", "query": "vehicle", "gold": ["f61"]}
+{"type": "t", "query": "Plan a dinner party menu for Saturday", "gold": ["f33", "f34", "f35", "f36", "f77"]}
+{"type": "t", "query": "Book a restaurant for our anniversary", "gold": ["f39", "f38", "f33", "f34", "f03"]}
+{"type": "t", "query": "Help me plan the Tokyo trip", "gold": ["f52", "f53", "f54", "f05"]}
+{"type": "t", "query": "Write a cover letter for a new engineering job", "gold": ["f07", "f08", "f15", "f16", "f10"]}
+{"type": "t", "query": "Set up a new Rust project for me", "gold": ["f10", "f26", "f23"]}
+{"type": "t", "query": "Draft an email to my manager about the migration timeline", "gold": ["f09", "f14", "f27"]}
+{"type": "t", "query": "Suggest a weekend activity with my family", "gold": ["f40", "f38", "f41"]}
+{"type": "t", "query": "Recommend a novel to read", "gold": ["f48", "f56"]}
+{"type": "t", "query": "Create a training plan for my race", "gold": ["f45"]}
+{"type": "t", "query": "Pick a gift for my mum", "gold": ["f42"]}
+{"type": "t", "query": "Choose a database for my photo app", "gold": ["f17", "f18", "f24"]}
+{"type": "t", "query": "Schedule a call with the team across timezones", "gold": ["f12", "f76"]}
+{"type": "t", "query": "Write a birthday message for my brother", "gold": ["f43"]}
+{"type": "t", "query": "What should I cook tonight?", "gold": ["f33", "f34", "f35", "f77"]}
+{"type": "t", "query": "Set up CI and hosting for my side project", "gold": ["f17", "f18", "f74", "f30"]}
+{"type": "t", "query": "Find a jazz bar near me", "gold": ["f46", "f64", "f03"]}
+{"type": "t", "query": "Prepare slides for my conference talk", "gold": ["f20"]}
+{"type": "t", "query": "Help me write the next chapter", "gold": ["f19"]}
+{"type": "t", "query": "Plan my commute to the office", "gold": ["f61"]}
+{"type": "t", "query": "Suggest a cafe for a morning coffee", "gold": ["f37"]}
+{"type": "t", "query": "Configure my keyboard firmware", "gold": ["f31"]}
+{"type": "t", "query": "Help with my performance self-review", "gold": ["f68", "f08", "f79", "f14"]}
+{"type": "t", "query": "Recommend a podcast for my long run", "gold": ["f55", "f45"]}
+{"type": "t", "query": "Organise Christmas travel", "gold": ["f80", "f51", "f42"]}
+{"type": "y", "query": "vegitarian", "gold": ["f33"]}
+{"type": "y", "query": "alergies", "gold": ["f34", "f77"]}
+{"type": "y", "query": "girlfreind or partner", "gold": ["f38"]}
+{"type": "y", "query": "doughter", "gold": ["f40"]}
+{"type": "y", "query": "maraton training", "gold": ["f45"]}
+{"type": "y", "query": "neovm editor", "gold": ["f21"]}
+{"type": "y", "query": "kubernets deployment", "gold": ["f11"]}
+{"type": "y", "query": "anniversery", "gold": ["f39"]}
+{"type": "y", "query": "greyhund", "gold": ["f41"]}
+{"type": "y", "query": "suring lessons", "gold": ["f47"]}
+{"type": "y", "query": "podcats", "gold": ["f55"]}
+{"type": "y", "query": "mancester", "gold": ["f04", "f42", "f80"]}

@@ -1,0 +1,21 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      matrix:
+        include:
+          - { os: macos-latest, features: "" }
+          - { os: ubuntu-24.04, features: "--features vendored-openssl" }
+          # Same architecture as a 64-bit Raspberry Pi OS.
+          - { os: ubuntu-24.04-arm, features: "--features vendored-openssl" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p recall ${{ matrix.features }}
+      - run: cargo build --release -p recall ${{ matrix.features }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recall-${{ matrix.os }}
+          path: target/release/recall

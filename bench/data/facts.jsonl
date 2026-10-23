@@ -1,0 +1,78 @@
+{"id": "f01", "kind": "identity", "content": "User's name is Sam Okafor."}
+{"id": "f02", "kind": "identity", "content": "User was born on 14 March 1991."}
+{"id": "f03", "kind": "identity", "content": "User lives in Lisbon, Portugal, in the Alfama neighbourhood."}
+{"id": "f04", "kind": "identity", "content": "User grew up in Manchester, England."}
+{"id": "f05", "kind": "identity", "content": "User speaks English natively, conversational Portuguese, and basic Japanese."}
+{"id": "f06", "kind": "identity", "content": "User holds British and Nigerian citizenship."}
+{"id": "f07", "kind": "work", "content": "User is a staff software engineer at Northwind Logistics."}
+{"id": "f08", "kind": "work", "content": "User leads the routing-optimisation team of six engineers."}
+{"id": "f09", "kind": "work", "content": "User's manager is Priya Raman, VP of Engineering."}
+{"id": "f10", "kind": "work", "content": "User's main languages at work are Rust and TypeScript."}
+{"id": "f11", "kind": "work", "content": "User's team deploys on Kubernetes in AWS eu-west-1."}
+{"id": "f12", "kind": "work", "content": "User works remotely and keeps core hours 10:00-16:00 Lisbon time."}
+{"id": "f13", "kind": "work", "content": "User's team has a weekly planning meeting on Monday mornings."}
+{"id": "f14", "kind": "work", "content": "User is migrating the routing service from Python to Rust, targeting completion in Q1 2027."}
+{"id": "f15", "kind": "work", "content": "User previously worked at Monzo for four years on payments infrastructure."}
+{"id": "f16", "kind": "work", "content": "User studied Computer Science at the University of Edinburgh."}
+{"id": "f17", "kind": "work", "content": "User is building a side project called Tidepool, a self-hosted photo library."}
+{"id": "f18", "kind": "work", "content": "Tidepool uses SvelteKit for the frontend and SQLite for storage."}
+{"id": "f19", "kind": "work", "content": "User is writing a book about systems design for small teams, aiming to finish the draft by June 2027."}
+{"id": "f20", "kind": "work", "content": "User is giving a talk on Rust async at RustConf 2027."}
+{"id": "f21", "kind": "preference", "content": "User uses Neovim as their main editor."}
+{"id": "f22", "kind": "preference", "content": "User prefers dark themes; their favourite colour scheme is Gruvbox."}
+{"id": "f23", "kind": "preference", "content": "User prefers small, focused pull requests with descriptive commit messages."}
+{"id": "f24", "kind": "preference", "content": "User dislikes ORMs and prefers writing raw SQL."}
+{"id": "f25", "kind": "preference", "content": "User prefers pnpm over npm for JavaScript projects."}
+{"id": "f26", "kind": "preference", "content": "User wants unit tests written alongside any new code."}
+{"id": "f27", "kind": "instruction", "content": "Always answer in British English spelling."}
+{"id": "f28", "kind": "instruction", "content": "Keep answers concise; skip pleasantries and lead with the answer."}
+{"id": "f29", "kind": "instruction", "content": "When suggesting code, show complete runnable examples rather than fragments."}
+{"id": "f30", "kind": "instruction", "content": "Don't recommend paid SaaS when a self-hosted option exists."}
+{"id": "f31", "kind": "preference", "content": "User types on a split mechanical keyboard (ZSA Moonlander) with a Colemak layout."}
+{"id": "f32", "kind": "preference", "content": "User's laptop is a MacBook Pro with an M4 Max; their home server runs Debian."}
+{"id": "f33", "kind": "preference", "content": "User is vegetarian."}
+{"id": "f34", "kind": "life", "content": "User is allergic to peanuts."}
+{"id": "f35", "kind": "preference", "content": "User loves spicy food, especially Sichuan and Ethiopian cuisine."}
+{"id": "f36", "kind": "preference", "content": "User doesn't drink alcohol."}
+{"id": "f37", "kind": "preference", "content": "User drinks oat-milk flat whites and avoids coffee after 2pm."}
+{"id": "f38", "kind": "life", "content": "User's partner is Ines, a marine biologist."}
+{"id": "f39", "kind": "life", "content": "User and Ines have been together since 2019; their anniversary is 9 August."}
+{"id": "f40", "kind": "life", "content": "User has a daughter, Ada, born in May 2023."}
+{"id": "f41", "kind": "life", "content": "User has a rescue greyhound named Biscuit."}
+{"id": "f42", "kind": "life", "content": "User's mother, Grace, lives in Manchester."}
+{"id": "f43", "kind": "life", "content": "User's brother, Tunde, is a doctor in Lagos."}
+{"id": "f44", "kind": "life", "content": "User's best friend is Marco, who lives in Porto."}
+{"id": "f45", "kind": "life", "content": "User runs three times a week and is training for the Lisbon Marathon in October 2027."}
+{"id": "f46", "kind": "life", "content": "User plays bass guitar in a jazz trio on weekends."}
+{"id": "f47", "kind": "life", "content": "User is learning to surf at Costa da Caparica."}
+{"id": "f48", "kind": "life", "content": "User enjoys science fiction; favourite authors are Ursula K. Le Guin and Ted Chiang."}
+{"id": "f49", "kind": "life", "content": "User plays chess online, rated about 1650 on Lichess."}
+{"id": "f50", "kind": "life", "content": "User grows tomatoes and herbs on their balcony."}
+{"id": "f51", "kind": "preference", "content": "User prefers trains over flying for trips under six hours."}
+{"id": "f52", "kind": "life", "content": "User has a trip to Tokyo planned for April 2027."}
+{"id": "f53", "kind": "preference", "content": "User prefers aisle seats when flying."}
+{"id": "f54", "kind": "preference", "content": "User usually stays in apartments rather than hotels when travelling."}
+{"id": "f55", "kind": "preference", "content": "User likes podcasts about history and economics."}
+{"id": "f56", "kind": "preference", "content": "User reads on a Kobo e-reader."}
+{"id": "f57", "kind": "preference", "content": "User prefers email over phone calls for anything non-urgent."}
+{"id": "f58", "kind": "preference", "content": "User uses Fastmail for email."}
+{"id": "f59", "kind": "preference", "content": "User plans their week every Sunday evening in Obsidian."}
+{"id": "f60", "kind": "preference", "content": "User needs at least seven hours of sleep and goes to bed around 23:00."}
+{"id": "f61", "kind": "life", "content": "User does not own a car and gets around by bike and metro."}
+{"id": "f63", "kind": "preference", "content": "User's favourite film is Spirited Away."}
+{"id": "f64", "kind": "preference", "content": "User listens to jazz and Afrobeats while working."}
+{"id": "f66", "kind": "work", "content": "User is on call every sixth week."}
+{"id": "f67", "kind": "work", "content": "User's company uses Linear for issue tracking and Slack for chat."}
+{"id": "f68", "kind": "work", "content": "User's performance review cycle is in November."}
+{"id": "f69", "kind": "identity", "content": "User's pronouns are they/them."}
+{"id": "f70", "kind": "instruction", "content": "Explain trade-offs rather than giving a single answer."}
+{"id": "f71", "kind": "life", "content": "User's daughter Ada attends nursery on weekdays until 17:30."}
+{"id": "f72", "kind": "life", "content": "User volunteers at a coding club for teenagers once a month."}
+{"id": "f73", "kind": "preference", "content": "User avoids Google products where possible."}
+{"id": "f74", "kind": "preference", "content": "User hosts personal projects on Hetzner."}
+{"id": "f75", "kind": "preference", "content": "User prefers metric units and 24-hour time."}
+{"id": "f76", "kind": "identity", "content": "User's timezone is Europe/Lisbon."}
+{"id": "f77", "kind": "life", "content": "User is lactose intolerant."}
+{"id": "f78", "kind": "preference", "content": "User prefers Markdown for documents and dislikes Word files."}
+{"id": "f79", "kind": "work", "content": "User mentors two junior engineers, Leo and Hana."}
+{"id": "f80", "kind": "life", "content": "User's family celebrates Christmas in Manchester every other year."}
